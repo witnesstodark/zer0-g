@@ -482,9 +482,10 @@ export class Race {
     inp.leanL = raw < -1.15
     // a drift only while the turn goes its way (a player widens a drift by steering out of it; the AI lets go)
     // (on gentle bends only: a drift turns less than the wheel; and not straight after the last one)
-    if (r.ai.drifting && !r.drift) r.ai.offAt = this.time
-    r.ai.drifting = !!r.drift
-    inp.drift = r.drift ? raw * r.drift > 0.3 && raw * r.drift < 0.95 : this.time - (r.ai.offAt ?? -9) > 0.9 && Math.abs(raw) > 0.5 && Math.abs(raw) < 0.95 && r.sp > r.vmax * 0.6 && !t.curved(t.index(s + 2))
+    // (kept on the racer: after the goal the autopilot drives a player, who has no r.ai)
+    if (r.aiDrifting && !r.drift) r.aiDriftOff = this.time
+    r.aiDrifting = !!r.drift
+    inp.drift = r.drift ? raw * r.drift > 0.3 && raw * r.drift < 0.95 : this.time - (r.aiDriftOff ?? -9) > 0.9 && Math.abs(raw) > 0.5 && Math.abs(raw) < 0.95 && r.sp > r.vmax * 0.6 && !t.curved(t.index(s + 2))
     // speed for the turns ahead
     const kmax = Math.abs(t.hardestAhead(s, 1.8 + r.sp * 0.6))
     const vLimit = kmax > 0.01 ? (r.turnRate + 0.2) / kmax : 99
