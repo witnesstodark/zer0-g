@@ -5,6 +5,7 @@
 
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { shared, fogChunk } from './look.js'
 import { U } from './scale.js'
 import { Airflow } from './airflow.js'
@@ -64,17 +65,58 @@ export async function loadMachines(p0) {
     gltf.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o })
     mesh.updateWorldMatrix(true, false)
     // the files carry quantized geometry (16-bit numbers, a smaller download): back to floats first
-    const geo = mesh.geometry.clone()
-    for (const [name, a] of Object.entries(geo.attributes)) {
-      if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array && !a.normalized) continue
-      const f = new Float32Array(a.count * a.itemSize), get = [i => a.getX(i), i => a.getY(i), i => a.getZ(i), i => a.getW(i)]
-      for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) f[i * a.itemSize + k] = get[k](i)
-      geo.setAttribute(name, new THREE.BufferAttribute(f, a.itemSize))
-    }
+    const geo = floats(mesh.geometry.clone())
     geo.applyMatrix4(mesh.matrixWorld)
     geo.computeBoundingBox()
     return { ...m, id: m.mesh, geometry: geo, material: mesh.material, size: geo.boundingBox.getSize(new THREE.Vector3()), nozzles: findNozzles(geo) }
   }))
+}
+
+/** Quantized or interleaved attributes as plain floats (the shaders and the nozzle search read them as such). */
+function floats(geo) {
+  for (const [name, a] of Object.entries(geo.attributes)) {
+    if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array && !a.normalized) continue
+    const f = new Float32Array(a.count * a.itemSize), get = [i => a.getX(i), i => a.getY(i), i => a.getZ(i), i => a.getW(i)]
+    for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) f[i * a.itemSize + k] = get[k](i)
+    geo.setAttribute(name, new THREE.BufferAttribute(f, a.itemSize))
+  }
+  return geo
+}
+
+/**
+ * A player's own machine (a Project 0 entity, made by their agent) as a model like the game's own: its parts
+ * merged into one geometry (a group per material), nose along +Z as the rules ask, centred, on y = 0 and scaled
+ * to the length of every other machine (0.9 m), its nozzles found as for the others. def: its pilot entry.
+ */
+export async function loadEntityMachine(url, def) {
+  const gltf = await new GLTFLoader().loadAsync(url)
+  gltf.scene.updateMatrixWorld(true)
+  const geos = [], mats = []
+  gltf.scene.traverse(o => {
+    if (!o.isMesh || geos.length >= 12) return
+    let g = floats(o.geometry.clone())
+    g.applyMatrix4(o.matrixWorld)
+    if (!g.attributes.normal) g.computeVertexNormals()
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2))
+    for (const n of Object.keys(g.attributes)) if (n !== 'position' && n !== 'normal' && n !== 'uv') g.deleteAttribute(n)
+    g.morphAttributes = {}
+    if (g.index) g = g.toNonIndexed()
+    g.clearGroups()
+    geos.push(g)
+    mats.push(Array.isArray(o.material) ? o.material[0] : o.material)
+  })
+  if (!geos.length) throw new Error('the machine has no mesh')
+  const geo = geos.length === 1 ? geos[0] : mergeGeometries(geos, true)
+  geo.computeBoundingBox()
+  const b = geo.boundingBox.clone(), len = Math.max(1e-3, b.max.z - b.min.z), k = 0.9 / len
+  geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2)
+  geo.scale(k, k, k)
+  geo.computeBoundingBox()
+  geo.computeBoundingSphere()
+  // its own nozzles when it names them (in the model's metres: moved and scaled as the geometry was), else found
+  const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2, y0 = b.min.y
+  const nozzles = def.thrusters?.length ? def.thrusters.map(([x, y, z, r]) => ({ x: (x - cx) * k, y: (y - y0) * k, z: (z - cz) * k, r: r * k })) : findNozzles(geo)
+  return { ...def, id: def.mesh, geometry: geo, material: mats.length === 1 ? mats[0] : mats, size: geo.boundingBox.getSize(new THREE.Vector3()), nozzles }
 }
 
 /**
@@ -184,6 +226,10 @@ export function neonEnvironment(renderer) {
 
 /** The neon rim and the hit flash on a machine material (per-instance colour in aAccent). lite: a Lambert
  * copy (no reflections) for software renderers, where thirty PBR machines cost most of a frame. */
+/** neonMaterial for one material or a list of them (a player's machine made of several parts). */
+const neon = (src, lite = false) => Array.isArray(src) ? src.map(m => neonMaterial(m, lite)) : neonMaterial(src, lite)
+const each = (mat, fn) => { for (const m of [mat].flat()) fn(m) }
+
 function neonMaterial(src, lite = false) {
   const mat = lite ? new THREE.MeshLambertMaterial({ map: src.map, emissive: src.emissive, emissiveMap: src.emissiveMap }) : src.clone()
   if (!lite) mat.envMapIntensity = 1.1
@@ -246,26 +292,34 @@ export class Fleet {
     this.models = models
     this.group = new THREE.Group()
     this.group.name = 'fleet'
-    this.meshes = models.map(m => {
-      const count = Math.max(1, racers.filter(r => r.model === models.indexOf(m)).length)
-      const mat = neonMaterial(m.material)
-      mat.envMap = envMap
-      const mesh = new THREE.InstancedMesh(m.geometry, mat, count)
-      mesh.geometry = m.geometry.clone()
-      mesh.geometry.setAttribute('aAccent', new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4))
-      mesh.geometry.setAttribute('aHue', new THREE.InstancedBufferAttribute(new Float32Array(count * 2), 2))
-      mesh.geometry.setAttribute('aHeal', new THREE.InstancedBufferAttribute(new Float32Array(count), 1).setUsage(THREE.DynamicDrawUsage))
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      mesh.frustumCulled = false
-      mesh.count = 0
-      mesh.name = m.id
-      this.group.add(mesh)
-      return mesh
-    })
+    this.envMap = envMap
+    this.meshes = models.map(m => this.makeMesh(m, Math.max(1, racers.filter(r => r.model === models.indexOf(m)).length)))
     this.slots = racers.map(() => null)
     this.setRacers(racers)
     this.fx = new ThrusterFx(racers.length)
     this.group.add(this.fx.flames, this.fx.cores, this.fx.glows, this.fx.trails)
+  }
+
+  /** Another machine (a player's own, joining an online race): its instanced mesh. */
+  addModel(m) {
+    this.models.push(m)
+    this.meshes.push(this.makeMesh(m, 1))
+  }
+
+  makeMesh(m, count) {
+    const mat = neon(m.material)
+    each(mat, x => { x.envMap = this.envMap })
+    const mesh = new THREE.InstancedMesh(m.geometry, mat, count)
+    mesh.geometry = m.geometry.clone()
+    mesh.geometry.setAttribute('aAccent', new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4))
+    mesh.geometry.setAttribute('aHue', new THREE.InstancedBufferAttribute(new Float32Array(count * 2), 2))
+    mesh.geometry.setAttribute('aHeal', new THREE.InstancedBufferAttribute(new Float32Array(count), 1).setUsage(THREE.DynamicDrawUsage))
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    mesh.frustumCulled = false
+    mesh.count = 0
+    mesh.name = m.id
+    this.group.add(mesh)
+    return mesh
   }
 
   setRacers(racers) {
@@ -302,8 +356,8 @@ export class Fleet {
   /** Cheap materials for a software renderer. */
   setLite() {
     for (const mesh of this.meshes) {
-      const lite = neonMaterial(this.models.find(m => m.id === mesh.name).material, true)
-      mesh.material.dispose()
+      const lite = neon(this.models.find(m => m.id === mesh.name).material, true)
+      each(mesh.material, x => x.dispose())
       mesh.material = lite
     }
   }
@@ -561,9 +615,10 @@ export class Showroom {
     const key = new THREE.DirectionalLight(0xffffff, 1.4)
     key.position.set(2, 3, 2)
     this.scene.add(key)
+    this.envMap = envMap
     this.items = models.map(m => {
-      const mat = neonMaterial(m.material)
-      mat.envMap = envMap
+      const mat = neon(m.material)
+      each(mat, x => { x.envMap = envMap })
       const geo = m.geometry.clone()
       geo.setAttribute('aAccent', new THREE.InstancedBufferAttribute(new Float32Array([...new THREE.Color(m.accent).toArray(), 0]), 4))
       geo.setAttribute('aHue', new THREE.InstancedBufferAttribute(new Float32Array([0, 1]), 2))

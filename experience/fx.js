@@ -157,6 +157,141 @@ export class Fx {
 }
 
 /**
+ * Boost particles with a shape: stars, hearts, bolts, rings, notes, diamonds, sparks and piglet snouts, drawn
+ * once into an atlas and flown as camera-facing quads in the machine's flame colour (the players' own machines
+ * choose theirs). spawn(...) then update(dt).
+ */
+export const EMBLEM_SHAPES = ['spark', 'star', 'heart', 'bolt', 'ring', 'note', 'diamond', 'snout']
+
+function emblemAtlas() {
+  const C = 128, n = EMBLEM_SHAPES.length
+  const cv = new OffscreenCanvas(C * n, C)
+  const g = cv.getContext('2d')
+  const star = (cx, cy, r1, r2, k) => {
+    g.beginPath()
+    for (let i = 0; i < k * 2; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / k, r = i % 2 ? r2 : r1
+      g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+    }
+    g.closePath(); g.fill()
+  }
+  EMBLEM_SHAPES.forEach((s, k) => {
+    g.save()
+    g.translate(k * C, 0)
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round'
+    const m = C / 2
+    if (s === 'spark') star(m, m, 54, 12, 4)
+    else if (s === 'star') star(m, m + 4, 54, 22, 5)
+    else if (s === 'heart') {
+      g.beginPath(); g.moveTo(m, 104)
+      g.bezierCurveTo(14, 70, 14, 26, 44, 24); g.bezierCurveTo(56, 23, 62, 32, m, 40)
+      g.bezierCurveTo(66, 32, 72, 23, 84, 24); g.bezierCurveTo(114, 26, 114, 70, m, 104)
+      g.fill()
+    } else if (s === 'bolt') {
+      g.beginPath(); [[74, 8], [30, 70], [60, 70], [48, 120], [98, 52], [68, 52], [84, 8]].forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill()
+    } else if (s === 'ring') {
+      g.lineWidth = 16; g.beginPath(); g.arc(m, m, 40, 0, Math.PI * 2); g.stroke()
+    } else if (s === 'note') {
+      g.beginPath(); g.ellipse(44, 94, 22, 16, -0.4, 0, Math.PI * 2); g.fill()
+      g.fillRect(58, 20, 10, 76)
+      g.beginPath(); g.moveTo(66, 20); g.quadraticCurveTo(104, 34, 96, 66); g.quadraticCurveTo(92, 44, 66, 44); g.closePath(); g.fill()
+    } else if (s === 'diamond') {
+      g.beginPath(); g.moveTo(m, 10); g.lineTo(112, m); g.lineTo(m, 118); g.lineTo(16, m); g.closePath(); g.fill()
+    } else if (s === 'snout') {
+      // a piglet's snout: a wide rounded disc, two nostrils and a grin cut out of it
+      g.beginPath(); g.ellipse(m, m, 56, 42, 0, 0, Math.PI * 2); g.fill()
+      g.globalCompositeOperation = 'destination-out'
+      g.beginPath(); g.ellipse(m - 20, m - 6, 10, 16, 0.25, 0, Math.PI * 2); g.fill()
+      g.beginPath(); g.ellipse(m + 20, m - 6, 10, 16, -0.25, 0, Math.PI * 2); g.fill()
+      g.lineWidth = 7; g.beginPath(); g.arc(m, m + 6, 26, 0.35, Math.PI - 0.35); g.stroke()
+    }
+    g.restore()
+  })
+  const tex = new THREE.CanvasTexture(cv)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
+export class Emblems {
+  /** near: the distance from the camera under which they fade out (world units). */
+  constructor(max = 260, near = 0.3) {
+    this.max = max
+    this.next = 0
+    this.p = new Float32Array(max * 3); this.v = new Float32Array(max * 3)
+    this.age = new Float32Array(max); this.life = new Float32Array(max).fill(0)
+    this.size = new Float32Array(max); this.rot = new Float32Array(max); this.spin = new Float32Array(max)
+    this.aPos = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4).setUsage(THREE.DynamicDrawUsage)
+    this.aMisc = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4).setUsage(THREE.DynamicDrawUsage)
+    this.aCol = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(THREE.DynamicDrawUsage)
+    const geo = new THREE.PlaneGeometry(1, 1)
+    geo.setAttribute('aPos', this.aPos); geo.setAttribute('aMisc', this.aMisc); geo.setAttribute('aCol', this.aCol)
+    this.mesh = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({
+      uniforms: { uAtlas: { value: emblemAtlas() }, uCells: { value: EMBLEM_SHAPES.length }, uNear: { value: near } },
+      vertexShader: /* glsl */`
+        attribute vec4 aPos; attribute vec4 aMisc; attribute vec3 aCol;
+        uniform float uCells, uNear;
+        varying vec2 vUv; varying vec3 vCol; varying float vA;
+        void main() {
+          vec4 mv = viewMatrix * vec4(aPos.xyz, 1.0);
+          float c = cos(aMisc.y), s = sin(aMisc.y);
+          vec2 q = mat2(c, -s, s, c) * position.xy * aPos.w;
+          mv.xy += q;
+          vUv = vec2((aMisc.x + uv.x) / uCells, uv.y);
+          // gone before they reach the camera (riding the wake, they would fill the screen as they pass)
+          vCol = aCol; vA = aMisc.z * smoothstep(uNear * 0.4, uNear, -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */`
+        uniform sampler2D uAtlas;
+        varying vec2 vUv; varying vec3 vCol; varying float vA;
+        void main() {
+          float a = texture2D(uAtlas, vUv).a * vA;
+          if (a < 0.01) discard;
+          gl_FragColor = vec4(vCol * a * 1.6, 1.0);
+        }`,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    }), max)
+    this.mesh.frustumCulled = false
+    this.mesh.name = 'emblems'
+    this.cells = Object.fromEntries(EMBLEM_SHAPES.map((s, k) => [s, k]))
+  }
+
+  /** One emblem: shape (a name from EMBLEM_SHAPES), at p, moving v, in color, size (world units), life (s). */
+  spawn(shape, p, v, color, size, life) {
+    const i = this.next
+    this.next = (this.next + 1) % this.max
+    this.p[i * 3] = p.x; this.p[i * 3 + 1] = p.y; this.p[i * 3 + 2] = p.z
+    this.v[i * 3] = v.x; this.v[i * 3 + 1] = v.y; this.v[i * 3 + 2] = v.z
+    this.age[i] = 0; this.life[i] = life; this.size[i] = size
+    this.rot[i] = (Math.random() - 0.5) * 0.8; this.spin[i] = (Math.random() - 0.5) * 5
+    this.aMisc.setX(i, this.cells[shape] ?? 0)
+    this.aCol.setXYZ(i, color.r, color.g, color.b)
+  }
+
+  update(dt) {
+    const P = this.aPos.array, M = this.aMisc.array
+    for (let i = 0; i < this.max; i++) {
+      if (this.age[i] >= this.life[i]) { P[i * 4 + 3] = 0; M[i * 4 + 2] = 0; continue }
+      this.age[i] += dt
+      const k = Math.exp(-0.5 * dt)
+      for (let j = 0; j < 3; j++) { this.v[i * 3 + j] *= k; this.p[i * 3 + j] += this.v[i * 3 + j] * dt }
+      this.rot[i] += this.spin[i] * dt
+      const t = this.age[i] / this.life[i]
+      P[i * 4] = this.p[i * 3]; P[i * 4 + 1] = this.p[i * 3 + 1]; P[i * 4 + 2] = this.p[i * 3 + 2]
+      // they pop in, grow a little and fade
+      P[i * 4 + 3] = this.size[i] * Math.min(1, t * 8) * (1 + t * 0.6)
+      M[i * 4 + 1] = this.rot[i]
+      M[i * 4 + 2] = Math.min(1, (1 - t) * 1.6)
+    }
+    this.aPos.needsUpdate = true
+    this.aMisc.needsUpdate = true
+    this.aCol.needsUpdate = true
+  }
+}
+
+/**
  * Slide marks: two glowing streaks laid on the road behind your machine's tail while it drifts, fading as
  * they go (in the colour of the turbo it has earned). add(k, point, side, colour, on) each frame per streak,
  * then update(time).

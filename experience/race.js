@@ -44,6 +44,7 @@ export class Racer {
     this.remote = !!def.remote          // another player's machine (drawn from their messages)
     this.pid = def.pid ?? null
     this.face = def.face ?? -1           // the pilot's portrait (the HUD's standings and map)
+    this.particle = def.particle ?? null // what flies out of its thrusters on a boost (players' own machines)
     this.engine = def.engine ?? 0.5
     const m = def.stats ?? MACHINES[def.model]
     this.halfWidth = def.halfWidth ?? 0.35

@@ -21,7 +21,7 @@ const MODE_LABEL = { gp: 'ZER0-G CUP', online: 'ONLINE RACE', ta: 'TIME ATTACK' 
 const MODES = ['gp', 'online', 'ta']
 
 // the machine screen's layout (in the 1280 x 720 frame)
-const GRID = { x: 40, y: 92, cols: 6, w: 124, h: 78, gap: 8 }
+const GRID = { x: 40, y: 92, cols: 7, w: 104, h: 78, gap: 8 }   // 7 x 3: the eighteen, and a player's own
 const STAND = { x: 40, y: 362, w: 788, h: 300 }
 const SIDE = { x: 852, y: 92 }
 // the buttons for the mouse: back (bottom left) and on (bottom right)
@@ -29,7 +29,8 @@ const BACK = { x: 40, y: 668, w: 170, h: 38 }
 const GO = { x: 1010, y: 668, w: 230, h: 38 }
 
 export class Menus {
-  constructor({ overlay, font, logo, icons, portraits, showroom, audio, tracks, onStart, onNext, onLobby, onBack }) {
+  constructor({ overlay, font, logo, icons, portraits, showroom, audio, tracks, onStart, onNext, onLobby, onBack, entityHint = '' }) {
+    this.entityHint = entityHint   // a player without a machine of their own: what to ask their agent
     this.overlay = overlay
     this.font = font
     this.audio = audio
@@ -179,6 +180,10 @@ export class Menus {
         add(`tile:${k}`, GRID.x + col * (GRID.w + GRID.gap), GRID.y + row * (GRID.h + GRID.gap), GRID.w, GRID.h, () => this.pickMachine(k), { twice: true })
       })
       add('engine', SIDE.x - 12, 572, 324, 40, p => this.setEngine(p.x), { drag: true })
+      if (this.entityHint) {
+        const k = PILOTS.length, col = k % GRID.cols, row = Math.floor(k / GRID.cols)
+        add('own', GRID.x + col * (GRID.w + GRID.gap), GRID.y + row * (GRID.h + GRID.gap), GRID.w, GRID.h, () => { this.flash = this.entityHint; this.redraw() })
+      }
     }
     if (scr === 'course') {
       const mode = MODES[s.mode]
@@ -335,7 +340,7 @@ export class Menus {
       if (moved) this.showMachine()
       if (ok) {
         this.audio.sfx('gtr_select')
-        if (this.onlinePick) { o?.pick(s.machine, s.engine); this.locked = true; this.redraw(); return true }
+        if (this.onlinePick) { o?.pick(PILOTS[s.machine]?.own ? -1 : s.machine, s.engine); this.locked = true; this.redraw(); return true }
         s.row = s.mode === 0 ? 1 : 0
         this.open('course')
         return true
@@ -376,7 +381,7 @@ export class Menus {
     if (this.screen === 'machine') this.showroom.update(dt)
     // the pick's clock ran out: your machine as it stands is locked in
     if (this.onlinePick && !this.locked && this.screen === 'machine' && this.online?.lobby?.phase === 'pick' && this.online.view().left < 0.5) {
-      this.online.pick(this.sel.machine, this.sel.engine); this.locked = true; this.redraw()
+      this.online.pick(PILOTS[this.sel.machine]?.own ? -1 : this.sel.machine, this.sel.engine); this.locked = true; this.redraw()
     }
   }
 
@@ -447,8 +452,23 @@ export class Menus {
         c.fillStyle = on ? 'rgba(41,211,255,0.16)' : hov ? 'rgba(41,211,255,0.1)' : 'rgba(8,10,28,0.7)'; c.fill()
         c.strokeStyle = on ? hex(pp.accent) : hov ? 'rgba(255,255,255,0.75)' : 'rgba(120,160,200,0.25)'; c.lineWidth = on ? 3 : hov ? 2 : 1; c.stroke()
         c.restore()
-        f.draw(c, pp.name, x + GRID.w / 2, y + GRID.h - 8, 9, { color: on ? '#ffffff' : '#8ab', align: 'center', skew: 0.08, outline: false })
+        f.draw(c, (pp.own ? 'YOURS: ' : '') + String(pp.name).slice(0, pp.own ? 10 : 15), x + GRID.w / 2, y + GRID.h - 8, 9, { color: pp.own ? '#ff8ae6' : on ? '#ffffff' : '#8ab', align: 'center', skew: 0.08, outline: false })
+        if (pp.own && !on) { c.save(); roundRect(c, x, y, GRID.w, GRID.h, 8); c.strokeStyle = '#ff2bd6'; c.lineWidth = 2; c.stroke(); c.restore() }
       })
+      // no machine of your own yet: a tile that says how to get one
+      if (this.entityHint) {
+        const k = PILOTS.length, x = GRID.x + (k % GRID.cols) * (GRID.w + GRID.gap), y = GRID.y + Math.floor(k / GRID.cols) * (GRID.h + GRID.gap)
+        const hov = this.hover === 'own'
+        c.save()
+        roundRect(c, x, y, GRID.w, GRID.h, 8)
+        c.fillStyle = hov ? 'rgba(255,43,214,0.14)' : 'rgba(8,10,28,0.55)'; c.fill()
+        c.setLineDash([5, 4]); c.strokeStyle = hov ? '#ff8ae6' : 'rgba(255,43,214,0.6)'; c.lineWidth = 2; c.stroke()
+        c.restore()
+        f.draw(c, '+', x + GRID.w / 2, y + 26, 26, { color: PINK, align: 'center' })
+        f.draw(c, 'YOUR OWN', x + GRID.w / 2, y + 52, 10, { color: '#ffffff', align: 'center', outline: false })
+        f.draw(c, 'MACHINE', x + GRID.w / 2, y + 66, 10, { color: '#ffffff', align: 'center', outline: false })
+      }
+      if (this.flash) f.draw(c, this.flash, STAND.x + STAND.w / 2, STAND.y + STAND.h - 18, 13, { color: PINK, align: 'center' })
       // the stand: a dark backdrop, so the race behind the menu does not show through
       const g = c.createLinearGradient(0, STAND.y, 0, STAND.y + STAND.h)
       g.addColorStop(0, 'rgba(4,6,20,0.92)'); g.addColorStop(1, 'rgba(10,16,40,0.95)')

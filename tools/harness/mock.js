@@ -44,11 +44,30 @@ const p0 = {
   random: mulberry32(12345),
   exit() {}, log: (...a) => console.log('[p0]', ...a),
   get width() { return innerWidth }, get height() { return innerHeight }, get pixelRatio() { return DPR },
+  // ?entity=1: this player has a machine of their own (?entity=stefan: the one in entity/stefan/); other players
+  // in a shared session have one too
+  entities: {
+    kind: { game: 'zer0-g', kind: 'machine', title: 'ZER0-G machine', version: 1, budget: 9 },
+    hint: 'Ask your AI agent: make me a machine for zer0-g (Project 0)',
+    mine() { return sampleMachine(params.get('entity'), p0.me.id) },
+    of(id) { return sampleMachine(params.get('entity') ?? '1', id) },
+  },
   time: 0, game: null, table: null, debugAutopilot: params.get('auto') === '1', debugHooks: o => { window.__dbg = o },
   win() { console.log('[p0] win') }, score(n) { console.log('[p0] score', n) }, items: { give() {} },
 }
 // ?pid=N: a shared session between tabs of one browser (a BroadcastChannel stands in for the server): the
 // state, messages, inputs and 20-a-second ticks (from the lowest id, the host), joins and leaves
+function sampleMachine(kind, id) {
+  if (!kind) return null
+  const base = location.origin
+  const entity = data => ({
+    id: `e${id}`, game: 'zer0-g', kind: 'machine', name: data.name, data, version: 1, status: 'live', cost: 8, owner: { uid: `u${id}`, name: `Player ${id}` },
+    model: kind === 'stefan' ? base + '/entity/stefan/model.glb' : base + '/experience/assets/machines/tophat.glb',
+    picture: kind === 'stefan' ? base + '/entity/stefan/picture.png' : base + '/experience/assets/ui/pilot_mak.jpg',
+  })
+  if (kind === 'stefan') return fetch(base + '/entity/stefan/entity.json').then(r => r.json()).then(entity)
+  return entity({ name: 'TEST HOG', pilot: `PILOT ${id}`, stats: { body: 'C', boost: 'A', grip: 'C' }, weight: 1100, accent: '#ff2bd6', flame: '#ff7ad9', particle: 'snout' })
+}
 const PID = Number(params.get('pid') ?? 0)
 if (PID) {
   const bc = new BroadcastChannel('p0-room-383')

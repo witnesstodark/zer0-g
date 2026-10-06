@@ -14,10 +14,11 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { Track } from './track.js'
 import { City } from './city.js'
 import { shared } from './look.js'
-import { PILOTS, RIVALS, RIVAL_ACCENTS, loadMachines, neonEnvironment, Fleet, Showroom } from './machines.js'
+import { PILOTS, RIVALS, RIVAL_ACCENTS, loadMachines, loadEntityMachine, neonEnvironment, Fleet, Showroom } from './machines.js'
+import { validate as validateMachine, hex as hexColor } from './entity_rules.js'
 import { Race, Racer, DT, makeAI, CLASSES, SCALE, NITRO_MAX, driftTier } from './race.js'
 import { Cameras, Director } from './camera.js'
-import { Fx, SlideMarks } from './fx.js'
+import { Fx, SlideMarks, Emblems } from './fx.js'
 import { Airflow } from './airflow.js'
 import { U } from './scale.js'
 import { ScreenFx } from './screenfx.js'
@@ -80,6 +81,42 @@ export default async function start(p0) {
   p0.hud('ZER0-G\nLoading the machines...')
   const models = await loadMachines(p0)
   const halfWidths = models.map(m => m.size.x / 2 * SCALE)
+  // the game's own eighteen: the AI rivals come from these only (the same on every player's screen online)
+  const OWN_PILOTS = PILOTS.filter(p => !p.own)
+
+  // ---- players' own machines (Project 0 entities made by their agents): yours comes first on the select
+  // screen, marked YOURS; the others' are loaded when they bring theirs to an online race
+  const entityUrl = u => { if (!u) return null; try { return new URL(u).href } catch { try { return new URL(u, p0.asset('')).href } catch { return null } } }
+  const textureAt = async url => { const t = new THREE.Texture(await bitmapLoader.loadAsync(url)); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t }
+  const entityPilots = new Map()        // player id -> the pilot entry of the machine they brought
+  async function entityMachine(e, pid, selectable) {
+    if (!e?.data || !e.model || !validateMachine(e.data).ok) return null
+    const d = e.data
+    const p = {
+      id: `entity-${e.id}`, mesh: `entity-${e.id}`, own: true, owner: pid,
+      pilot: String(d.pilot).toUpperCase().slice(0, 16), name: String(e.name ?? d.name).toUpperCase().slice(0, 32),
+      accent: hexColor(d.accent), flame: hexColor(d.flame), particle: d.particle, hue: 0, sat: 1,
+      body: d.stats.body, boost: d.stats.boost, grip: d.stats.grip, weight: d.weight, thrusters: d.thrusters ?? null,
+    }
+    const model = await loadEntityMachine(entityUrl(e.model), p)
+    let face = portraits[0]
+    if (e.picture) try { face = await textureAt(entityUrl(e.picture)) } catch { /* the first pilot's then */ }
+    p.model = models.length
+    models.push(model)
+    halfWidths.push(model.size.x / 2 * SCALE)
+    p.face = portraits.length
+    portraits.push(face)
+    if (selectable) PILOTS.push(p)
+    entityPilots.set(pid, p)
+    return p
+  }
+  let ownMachine = null
+  try {
+    const e = await p0.entities?.mine?.()
+    if (e) ownMachine = await entityMachine(e, p0.me.id, true)
+    if (e && !ownMachine) p0.log('your machine does not pass the rules (or has no model): ask your agent to update it')
+  } catch (err) { p0.log(`your machine did not load: ${err.message}`) }
+  const entityHint = p0.entities?.kind && !ownMachine ? (p0.entities.hint || 'Ask your AI agent: make me a machine for zer0-g (Project 0)') : ''
 
   // ---- the world
   const courses = [track1, track2, track3].map(d => new Track(d).buildLine())
@@ -95,6 +132,9 @@ export default async function start(p0) {
   scene.add(fx.group)
   const marks = new SlideMarks()
   scene.add(marks.mesh)
+  // players' own boost particles (stars, hearts, snouts...)
+  const emblems = new Emblems(260, 0.42 * U)
+  scene.add(emblems.mesh)
   // the air streaming round your machine and the nearest ones
   const air = new Airflow(7)
   scene.add(air.mesh)
@@ -165,16 +205,16 @@ export default async function start(p0) {
   }
 
   /** A pilot's machine as a racer's definition. */
-  const pilotDef = (p, name = p.pilot) => ({ name, model: p.model, accent: p.accent, hue: p.hue, sat: p.sat, stats: p, face: PILOTS.indexOf(p) })
+  const pilotDef = (p, name = p.pilot) => ({ name, model: p.model, accent: p.accent, hue: p.hue, sat: p.sat, stats: p, face: p.face ?? PILOTS.indexOf(p), particle: p.particle ?? null })
 
   /** Who races against you: the other named pilots in their own machines, then rivals in the pilots' machines,
    * repainted (the cup keeps the same field for its three races). */
   function fieldDefs(human) {
     const defs = []
-    PILOTS.forEach((p, k) => { if (!human || k !== human.machine) defs.push(pilotDef(p)) })
+    PILOTS.forEach((p, k) => { if (!p.own && (!human || k !== human.machine)) defs.push(pilotDef(p)) })
     let r = 0
     while (defs.length < (human ? N - 1 : N)) {
-      const p = PILOTS[Math.floor(random() * PILOTS.length)]
+      const p = OWN_PILOTS[Math.floor(random() * OWN_PILOTS.length)]
       defs.push({ ...pilotDef(p, RIVALS[r % RIVALS.length]), accent: RIVAL_ACCENTS[(r * 7) % RIVAL_ACCENTS.length], hue: 0.15 + random() * 0.7, sat: 0.8 + random() * 0.4 })
       r++
     }
@@ -201,14 +241,14 @@ export default async function start(p0) {
     let seed = gp.seed >>> 0
     const rng = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
     const players = gp.field.map((e, k) => {
-      const p = PILOTS[e.m] ?? PILOTS[0]
+      const p = (e.m === -1 ? entityPilots.get(e.pid) : PILOTS[e.m]) ?? PILOTS[0]
       return new Racer(k, { ...pilotDef(p, String(e.n || 'PLAYER').toUpperCase()), human: true, remote: e.pid !== p0.me.id, pid: e.pid, halfWidth: halfWidths[p.model], engine: e.e ?? 0.5 })
     })
     const taken = new Set(gp.field.map(e => e.m))
-    const defs = PILOTS.filter((p, k) => !taken.has(k)).map(p => pilotDef(p))
+    const defs = OWN_PILOTS.filter((p, k) => !taken.has(k)).map(p => pilotDef(p))
     let r = 0
     while (players.length + defs.length < N) {
-      const p = PILOTS[Math.floor(rng() * PILOTS.length)]
+      const p = OWN_PILOTS[Math.floor(rng() * OWN_PILOTS.length)]
       defs.push({ ...pilotDef(p, RIVALS[r % RIVALS.length]), accent: RIVAL_ACCENTS[(r * 7) % RIVAL_ACCENTS.length], hue: 0.15 + rng() * 0.7, sat: 0.8 + rng() * 0.4 })
       r++
     }
@@ -271,6 +311,16 @@ export default async function start(p0) {
         audio.sfx('nitro_go', { volume: 1, rate: 1 + (stack - 1) * 0.08 }); audio.sfx('boost', { volume: 0.5 + stack * 0.15, rate: 1.2, gap: 0.2 })
         cams.shake = Math.max(cams.shake, 0.6 + stack * 0.15); cams.kick = 15 + (stack - 1) * 5; cams.surge = 1 + (stack - 1) * 0.5
         screen.flash(stack >= 3 ? 0xffffff : 0xff2bd6, 0.85)
+        if (r.particle) {
+          const model = models[r.model]
+          for (let k = 0; k < 8 + stack * 4; k++) {
+            const nz = model.nozzles[k % model.nozzles.length]
+            WIND.copy(tail).addScaledVector(f.u, nz.y * SCALE)
+            VEL.copy(f.f).multiplyScalar(r.sp * (0.8 + Math.random() * 0.12))
+            VEL.x += (Math.random() - 0.5) * 0.9 * U; VEL.y += Math.random() * 0.6 * U; VEL.z += (Math.random() - 0.5) * 0.9 * U
+            emblems.spawn(r.particle, WIND, VEL, FLAME_COLORS[r.model], (0.064 + Math.random() * 0.04) * U, 1.0 + Math.random() * 0.5)
+          }
+        }
         if (stack === 2) hud.note('DOUBLE NITRO!', 1, 'pink')
         else if (stack >= 3) { hud.say('MEGA NITRO', 1.1, 'pink'); fx.ring(tail, f.f, 0xffffff, 1.4 * U, 0.5) }
       }
@@ -423,6 +473,16 @@ export default async function start(p0) {
       // the thrusters burn whenever the machine flies (bigger on a plate, huge on a boost), each machine's own colour
       const model = models[r.model]
       fleet.fx.setFlames(i, M, model.nozzles, r.alive ? Math.max(0.6, power) : 0, FLAME_COLORS[r.model], r.alive)
+      // a player's own machine on a boost: its own particles fly out of its nozzles
+      if (r.particle && r.alive && r.boostT > 0 && (r === me || POS.distanceToSquared(camera.position) < 9) && Math.random() < dt * (r === me ? 26 : 14)) {
+        const nz = model.nozzles[Math.floor(Math.random() * model.nozzles.length)]
+        WIND.set(nz.x, nz.y, nz.z).applyMatrix4(M)
+        // carried along in the machine's wake, falling back slowly and spreading out (left behind at once,
+        // they would only flash past the camera)
+        VEL.copy(Z).multiplyScalar(r.sp * (0.86 + Math.random() * 0.08)).addScaledVector(f.u, (0.1 + Math.random() * 0.35) * U)
+        VEL.x += (Math.random() - 0.5) * 0.5 * U; VEL.y += (Math.random() - 0.5) * 0.3 * U; VEL.z += (Math.random() - 0.5) * 0.5 * U
+        emblems.spawn(r.particle, WIND, VEL, FLAME_COLORS[r.model], (0.056 + Math.random() * 0.032) * U, 0.8 + Math.random() * 0.5)
+      }
       // the air streaming round it, at speed (you, and a few close to the camera)
       if (r.alive && !r.air && (r === me || (airNear < 5 && POS.distanceToSquared(camera.position) < 2.4))) {
         const k = THREE.MathUtils.clamp((r.sp / r.vmax - 0.2) / 0.8, 0, 1) * (r.boostT > 0 ? 1.35 : 1)
@@ -666,8 +726,16 @@ export default async function start(p0) {
     startLocal({ ...config, course: cup.k })
   }
 
-  /** The field is set with you in it: everyone's race starts on the session's clock. */
-  function startOnline(L) {
+  /** The field is set with you in it: everyone's race starts on the session's clock (the machines the others
+   * brought of their own load first, inside the sweep down the grid). */
+  async function startOnline(L) {
+    for (const f of L.field) {
+      if (f.m !== -1 || entityPilots.has(f.pid)) continue
+      try {
+        const p = await entityMachine(await p0.entities?.of?.(f.pid), f.pid, false)
+        if (p) { fleet.addModel(models[p.model]); FLAME_COLORS.push(new THREE.Color(p.flame)) }
+      } catch (err) { p0.log(`a player's machine did not load: ${err.message}`) }
+    }
     const cfg = { mode: 'online', cls: L.c, course: L.co ?? 0, machine: menus.sel.machine, engine: menus.sel.engine, online: L }
     startLocal(cfg)
     online.begin(L, race.racers, me)
@@ -749,6 +817,7 @@ export default async function start(p0) {
     onStart: cfg => startRace(cfg),
     onNext: () => nextCupRace(),
     onLobby: () => backToLobby(),
+    entityHint,
     onBack: () => toMenu(),
   })
   if (p0.table) menus.setTable(p0.table)
@@ -887,6 +956,7 @@ export default async function start(p0) {
     city.crowd.uniforms.uCheer.value = state === 'countdown' || (me?.finished ?? false) ? 1 : 0.2
     feelSpeed(dt)
     fx.update(dt)
+    emblems.update(dt)
     marks.update(p0.time)
     fx.setScale(p0.height * p0.pixelRatio, camera.fov)
     if (state === 'race' || state === 'countdown' || state === 'prerace') { if (me) hud.update(dt, race, me) }

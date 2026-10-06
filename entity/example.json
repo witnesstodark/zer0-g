@@ -1,0 +1,14 @@
+{
+ "name": "MIDNIGHT KITE",
+ "description": "A swept-wing courier built for the night shift: light, quick off the line, and gone before the barrier sparks settle.",
+ "pilot": "IRIS VALE",
+ "stats": {
+  "body": "B",
+  "boost": "B",
+  "grip": "B"
+ },
+ "weight": 1120,
+ "accent": "#29d3ff",
+ "flame": "#8af3ff",
+ "particle": "star"
+}

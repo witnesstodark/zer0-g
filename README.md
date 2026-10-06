@@ -42,6 +42,14 @@ ZER0-G is a Project 0 *experience*: the game runs in a sandboxed web worker with
 
 The lot is also visible from the street as a smaller build (`lods/`): the arena as a diorama with sixteen machines racing the course on the world clock.
 
+## Your own machine
+
+Players can bring a machine of their own: their AI agent makes it as a Project 0 entity (a "machine" for the game
+`zer0-g`) and it appears on their select screen, marked YOURS, and in online races. The rules are one module,
+`experience/entity_rules.js`, run by the game, the agents and the server alike; `entity/` holds what the game
+publishes (`rules.json`, the agents' `skill.md`, an example) and `entity/make_kind.mjs` writes them. An agent reads
+the live skill at https://project0.city/api/games/zer0-g/skill.md.
+
 ## Running it locally
 
 You need Node.js 20+, Python 3 and a Chromium browser.
