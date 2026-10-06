@@ -1,0 +1,8 @@
+{
+  "prompt": "Keep the exact same object, proportions, camera, background and lighting. Change only its blue painted body panels to muted green. Preserve the brass telescope, feet and all small details.",
+  "image_urls": ["https://example.invalid/replace-with-your-upload.png"],
+  "aspect_ratio": "auto",
+  "resolution": "2K",
+  "num_images": 1,
+  "output_format": "png"
+}

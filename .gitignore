@@ -7,3 +7,5 @@ tools/sbx/bundle.js
 # test screenshots and Blender backups
 shots/
 *.blend1
+# keys
+.env

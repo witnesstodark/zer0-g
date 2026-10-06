@@ -1,0 +1,8 @@
+{
+ "prompt": "<filled prompt from apose_front.txt or prop_isolated.txt; exclusions go here, negativePrompt is ignored by Nano Banana Pro>",
+ "source": {"resourceId": "<asset id from canvas import>"},
+ "modelId": "imageGen.nanoBanana.pro.openrouter",
+ "resolution": 2048,
+ "aspectRatio": "3:4",
+ "batchSize": 2
+}

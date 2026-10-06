@@ -1,0 +1,2 @@
+fal-client>=0.13.2,<1
+python-dotenv>=1,<2

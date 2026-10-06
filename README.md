@@ -86,8 +86,17 @@ lods/         the street view of the lot (glTF, shaders, the clip script)
 lods-src/     sources for the street view
 tools/        course designer, asset preparation, headless sim, the p0 stand-in, test scripts
 sources/      prompts and scripts used to generate the concepts, meshes, music, effects and announcer
+skills/       the agent skills used for the art and sound (fal.ai, AssetHub)
 docs/         screenshots
 ```
+
+## Skills
+
+The agent skills I used to make the concepts, machines and sounds are in [skills/](skills/README.md):
+`fal-ai-generation` (Nano Banana images and ElevenLabs sounds through fal.ai), `assethub-production`
+(Tripo P2 meshes through AssetHub) and `3d-production-routing`, which picks between them. Copy them into
+`.claude/skills/` or `.agents/skills/` and bring your own keys. For building and publishing on Project 0 the
+agent used Project 0's own skill: [project0.city/skill.md](https://project0.city/skill.md).
 
 ## Credits
 
