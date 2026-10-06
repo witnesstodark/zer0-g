@@ -25,7 +25,7 @@ const QUIET = 14                      // seconds without one: that member is awa
 const RACE_MAX = 240                  // seconds a race may last before its lobby opens again anyway
 
 // flags of a machine's state
-const ALIVE = 1, FINISHED = 2, BOOST = 4, PLATE = 8, DRIFT_R = 16, DRIFT_L = 32, RETIRED = 64, AIR = 128, SPIN = 256
+const ALIVE = 1, FINISHED = 2, BOOST = 4, PLATE = 8, DRIFT_R = 16, DRIFT_L = 32, RETIRED = 64, AIR = 128, SPIN = 256, WRECK = 512
 
 const q = (v, k) => Math.round(v * k)
 
@@ -332,12 +332,20 @@ export class Online {
   }
 }
 
+/** What to do when another screen's machine is wrecked (fn(racer, last)): the game shows the blast. */
+export function onRemoteWreck(fn) { setFlags.onWreck = fn }
+
 function flags(r) {
   return (r.alive ? ALIVE : 0) | (r.finished ? FINISHED : 0) | (r.boostT > 0 ? BOOST : 0) | (r.dashT > 0 || r.turbo > 0 ? PLATE : 0) |
-    (r.drift > 0 ? DRIFT_R : 0) | (r.drift < 0 ? DRIFT_L : 0) | (r.retired ? RETIRED : 0) | (r.air ? AIR : 0) | (r.spinT > 0 ? SPIN : 0)
+    (r.drift > 0 ? DRIFT_R : 0) | (r.drift < 0 ? DRIFT_L : 0) | (r.retired ? RETIRED : 0) | (r.air ? AIR : 0) | (r.spinT > 0 ? SPIN : 0) |
+    (r.wreckT > 0 ? WRECK : 0)
 }
 
 function setFlags(r, f) {
+  // a wreck seen on another screen: the blast once, the machine gone until its spare comes out
+  const wrecked = !!(f & WRECK)
+  if ((wrecked && !(r.wreckT > 0)) || (!(f & ALIVE) && r.alive && (f & RETIRED))) setFlags.onWreck?.(r, !wrecked)
+  r.wreckT = wrecked ? 1 : 0
   r.alive = !!(f & ALIVE)
   r.finished = !!(f & FINISHED)
   r.retired = !!(f & RETIRED)

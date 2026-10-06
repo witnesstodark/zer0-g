@@ -1027,16 +1027,16 @@ DESIGNS = {'neon': ('NEON CITY', 0, lambda: design_neon_city()), 'pipe': ('SKY P
            'mesa': ('RUST MESA', 7, design_rust_mesa, dict(blurb='AN EIGHT INSIDE THE CANYON RIM', env='desert', cup=2)),
            'twister': ('SAND TWISTER', 8, design_sand_twister, dict(blurb='THE BIG BEND, THEN DOWN THE TWISTER', env='desert', cup=2))}
 
-def more_heals(fr, features, total, every=95.0, length=12.0, gap=48.0):
+def more_heals(fr, features, total, every=68.0, length=11.0, gap=34.0):
     """Heal strips enough for a long course (about one every `every` metres): new ones go on flat stretches clear
     of the other features, as far as can be from the strips already there; along an edge where barriers stand,
     down the middle of the road (side 0) where the edges are open, so a heal never asks for a run along a drop."""
     n = len(fr)
     def ok(i):
         s, p, f, u, r, fl, k, h, sh = fr[i]
-        return 'gap' not in fl and abs(k) < 1e-4 and u[1] > 0.9
+        return 'gap' not in fl and abs(k) < 1e-4 and u[1] > 0.8
     opened = lambda s0, s1: any('open' in fr[int(q) % n][5] for q in range(int(s0 / STEP), int(s1 / STEP) + 1))
-    taken = [(f['s0'] - 2.0, f.get('s1', f['s0']) + 2.0) for f in features]
+    taken = [(f['s0'] - 1.5, f.get('s1', f['s0']) + 1.5) for f in features if f['kind'] != 'mine'] +             [(f['s0'] - 4.0, f['s0'] + 4.0) for f in features if f['kind'] == 'mine']
     free = lambda s0, s1: all(s1 < a or s0 > b for a, b in taken)
     pits = [f['s0'] for f in features if f['kind'] == 'pit']
     dist = lambda a, b: min(abs(a - b), total - abs(a - b))
@@ -1050,7 +1050,7 @@ def more_heals(fr, features, total, every=95.0, length=12.0, gap=48.0):
         while j < n and ok(j):
             j += 1
         s0, s1 = i * STEP, j * STEP
-        for start in [s0 + 1.0 + k * 6.0 for k in range(int((s1 - s0 - length - 2.0) // 6.0) + 1)]:
+        for start in [s0 + 1.0 + k * 3.0 for k in range(int((s1 - s0 - length - 2.0) // 3.0) + 1)]:
             if start + length <= s1 - 1.0 and free(start, start + length):
                 cands.append(start)
         i = j
@@ -1061,7 +1061,7 @@ def more_heals(fr, features, total, every=95.0, length=12.0, gap=48.0):
             break
         open_edge = opened(best, best + length)
         features.append({'kind': 'pit', 's0': round(best, 3), 's1': round(best + length, 3), 'side': 0 if open_edge else side})
-        taken.append((best - 2.0, best + length + 2.0))
+        taken.append((best - 1.5, best + length + 1.5))
         pits.append(best)
         cands = [c for c in cands if free(c, c + length)]
         if not open_edge: side = -side

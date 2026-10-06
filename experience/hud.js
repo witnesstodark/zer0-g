@@ -4,7 +4,7 @@
 // in the middle.
 
 import { fmtTime, ordinal, slantBar, roundRect } from './ui.js'
-import { KMH, NITRO_CELL, driftTier } from './race.js'
+import { KMH, NITRO_CELL, LIVES, driftTier } from './race.js'
 
 const CYAN = ['#ffffff', '#9ff3ff', '#29d3ff']
 const GOLD = ['#fffbe0', '#ffd66b', '#ff9a1f']
@@ -42,6 +42,13 @@ export class Hud {
     this.power = overlay.panel(420, 150, (c, me, blink) => {
       const k = me.energy / 100
       f.draw(c, 'POWER', 402, 18, 18, { color: '#8fe9ff', align: 'right', skew: 0.15 })
+      // the machines left for this race: one mark each, a wrecked one hollow
+      for (let i = 0; i < LIVES; i++) {
+        const x = 42 + i * 30, y = 17, on = i < (me.lives ?? LIVES)
+        c.save(); c.beginPath(); c.moveTo(x, y - 8); c.lineTo(x + 11, y + 7); c.lineTo(x, y + 3); c.lineTo(x - 11, y + 7); c.closePath()
+        if (on) { c.shadowColor = 'rgba(41,211,255,0.8)'; c.shadowBlur = 8; c.fillStyle = '#9ff3ff'; c.fill() } else { c.strokeStyle = 'rgba(255,90,110,0.7)'; c.lineWidth = 1.5; c.stroke() }
+        c.restore()
+      }
       const col = me.inPit ? (blink ? '#7dffb0' : '#29ffd0') : k > 0.5 ? '#29d3ff' : k > 0.25 ? '#ffd23a' : (blink ? '#ff1f3d' : '#7a0a1a')
       slantBar(c, 30, 34, 370, 26, k, col)
       if (me.energy <= 0) f.draw(c, 'DANGER', 215, 47, 20, { color: blink ? RED : '#ffffff', align: 'center' })
@@ -245,7 +252,7 @@ export class Hud {
     if (this.frame % 2) return
     const blink = Math.floor(race.time * 4) % 2 === 0
     this.time.update(`${Math.floor(Math.max(0, race.time) * 100)}|${me.lapTimes.length}`, race, me)
-    this.power.update(`${Math.round(me.energy * 2)}|${Math.round(me.nitro)}|${blink}|${me.kos}|${me.inPit}|${me.boostT > 0}`, me, blink)
+    this.power.update(`${Math.round(me.energy * 2)}|${Math.round(me.nitro)}|${blink}|${me.kos}|${me.inPit}|${me.boostT > 0}|${me.lives}`, me, blink)
     this.rank.update(`${me.rank}|${race.racers.length}|${me.retired}`, me, race.racers.length)
     this.board.update(race.ranked.slice(0, TOP).map(r => `${r.i}${r.retired ? 'o' : r.finished ? 'g' : ''}`).join(',') + `|${me.rank}`, race, me)
     const tier = me.drift ? driftTier(me) : -1

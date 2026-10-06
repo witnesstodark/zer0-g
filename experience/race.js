@@ -27,6 +27,12 @@ export const CLASSES = [
 ]
 
 export const NITRO_CELL = 25, NITRO_MAX = 100
+// wrecks: a machine hit again with its energy gone, or falling off the course with little left, blows apart; the
+// spare is on the road WRECK_T seconds later with full energy. LIVES machines a race: the last one wrecked is out
+export const LIVES = 3
+const WRECK_T = 2.4
+const DOOM = 30                       // energy under which a fall off the course wrecks the machine
+const FALL_COST = 18                  // energy a fall off the course costs (with the spare: none)
 
 /** The turbo a drift has earned so far: 0 none, 1 blue, 2 orange, 3 pink. */
 export const driftTier = r => r.driftT > 1.7 ? 3 : r.driftT > 0.9 ? 2 : r.driftT > 0.35 ? 1 : 0
@@ -63,7 +69,8 @@ export class Racer {
     this.sp = 0; this.psi = 0; this.phi = 0
     this.energy = 100
     this.boostT = 0; this.boostStack = 0; this.boostAt = -9; this.dashT = 0; this.spinT = 0; this.sideT = 0; this.sideDir = 0; this.cool = 0
-    this.air = false; this.falling = false; this.fallT = 0
+    this.air = false; this.falling = false; this.fallT = 0; this.doomed = false
+    this.lives = LIVES; this.wreckT = 0
     this.fallPos = null; this.fallVel = null
     this.alive = true; this.finished = false; this.finishTime = 0; this.retired = false
     this.lapTimes = []; this.lapStart = 0; this.lap = 0
@@ -141,6 +148,7 @@ export class Race {
   fly(r, dt) {
     const t = this.track
     const inp = r.input
+    if (r.wreckT > 0) return this.waitSpare(r, dt)
     if (r.falling) return this.fall(r, dt)
     const s = t.wrapS(r.D)
     const idx = t.index(s)
@@ -544,7 +552,7 @@ export class Race {
   collide(dt) {
     const t = this.track
     const L = t.length
-    const list = this.racers.filter(r => r.alive && !r.falling)
+    const list = this.racers.filter(r => r.alive && !r.falling && !(r.wreckT > 0))
     for (let a = 0; a < list.length; a++) {
       const A = list[a]
       for (let b = a + 1; b < list.length; b++) {
@@ -616,7 +624,7 @@ export class Race {
     t.mines.forEach((m, i) => {
       if (!m.alive) return
       for (const r of this.racers) {
-        if (!r.alive || r.falling || r.remote || r.h > 0.2) continue
+        if (!r.alive || r.falling || r.wreckT > 0 || r.remote || r.h > 0.2) continue
         const d = t.wrapS(r.D - m.s + 0.5) - 0.5
         if (Math.abs(d) < 0.17 && Math.abs(r.x - m.x) < 0.075 + r.halfWidth * 0.7) {
           t.setMine(i, false)
@@ -654,23 +662,46 @@ export class Race {
     r.flowFull = r.flow >= 1
     if (flowWas > 0.4 && r.flow < 0.1) this.events('flowLost', r)
     r.flash = Math.max(r.flash, Math.min(1, amount / 12))
-    if (was <= 0 && amount > 0.5) this.destroy(r)
+    if (was <= 0 && amount > 0.5) this.wreck(r, 'hit')
     else if (r.energy <= 0 && was > 0) this.events('empty', r)
   }
 
-  destroy(r) {
-    if (!r.alive) return
-    r.alive = false
-    r.retired = true
+  /**
+   * Blown apart (hit again with no energy left, or off the course with little): a life gone; the spare comes out
+   * WRECK_T seconds later where it last was safely. The last machine wrecked: out of the race.
+   */
+  wreck(r, cause) {
+    if (!r.alive || r.wreckT > 0 || r.finished) return
     const by = this.time - r.lastHitAt < 2.5 ? r.lastHitBy : null
-    if (by && by.alive) { by.kos++; this.charge(by, 50); this.events('ko', by, r) }
-    this.events('destroyed', r)
+    if (by && by.alive && by !== r) { by.kos++; this.charge(by, 50); this.events('ko', by, r) }
+    r.lives = Math.max(0, r.lives - 1)
+    r.drift = 0; r.driftT = 0; r.boostT = 0; r.boostStack = 0; r.turbo = 0; r.dashT = 0; r.spinT = 0; r.sideT = 0
+    r.doomed = false
+    if (r.lives <= 0) {
+      r.alive = false
+      r.retired = true
+      r.sp = 0
+      this.events('destroyed', r, { cause })
+      r.falling = false
+      return
+    }
+    r.wreckT = WRECK_T
+    this.events('wreck', r, { cause, lives: r.lives })
+    r.falling = false
+  }
+
+  /** The wreck burns; then the spare machine. */
+  waitSpare(r, dt) {
+    r.wreckT -= dt
+    r.sp = 0
+    if (r.wreckT <= 0) { r.wreckT = 0; this.respawn(r, true) }
   }
 
   courseOut(r) {
     if (r.falling) return
     r.falling = true
     r.fallT = 0
+    r.doomed = r.energy < DOOM
     this.events('courseout', r)
   }
 
@@ -680,22 +711,25 @@ export class Race {
     r.h += r.vh * dt
     r.vh -= 12 * U * dt
     r.D += r.sp * dt * 0.8
+    // with little energy left it does not come back: it blows apart as it falls
+    if (r.doomed && r.fallT > 0.5) return this.wreck(r, 'fall')
     if (r.fallT > 0.85) this.respawn(r)
   }
 
-  /** Back on the road where it last was safely, slow, passing through the others for a moment. */
-  respawn(r) {
+  /** Back on the road where it last was safely, slow, passing through the others for a moment (the spare after a
+   * wreck: full energy, slower, a little longer through the others). */
+  respawn(r, spare = false) {
     r.falling = false; r.air = false
     r.D = r.safeD ?? r.D
     r.x = clamp(r.safeX ?? 0, -0.9, 0.9)
     r.h = 0; r.vh = 0
-    r.sp = r.vmax * 0.3
+    r.sp = r.vmax * (spare ? 0.2 : 0.3)
     r.psi = 0; r.phi = 0; r.drift = 0; r.driftT = 0; r.turbo = 0; r.boostT = 0; r.dashT = 0; r.spinT = 0; r.sideT = 0
     r.flow = 0
-    r.energy = Math.max(1, r.energy - 6)
-    r.ghost = 1.6
+    r.energy = spare ? 100 : Math.max(1, r.energy - FALL_COST)
+    r.ghost = spare ? 2.2 : 1.6
     r.flash = 1
-    this.events('respawn', r)
+    this.events('respawn', r, { spare })
   }
 
   rankRacers() {

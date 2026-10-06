@@ -11,6 +11,7 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 - **Three cups of three courses.** The ZER0-G Cup over Neon City: NEON CITY (a loop, a corkscrew and a spiral), SKY PIPE (a pipe you ride round, walls and ceiling) and THE DRUM (a cylinder you ride on the outside). The NOVA CUP in deep space: PULSAR RUN, NEBULA KNOT and ORBIT GATE. The DUST CUP in a red desert: SCORCH STRIP, RUST MESA and SAND TWISTER. The later cups are longer and harder, with courses that climb round after round and come back down, hairpins, chicanes, open edges and canyons you can ride up the walls of. Open stretches without barriers, jumps you can fly off, and an instant respawn when you fall.
 - **Eighteen machines**, each with its own pilot and stats (body, boost, grip, weight) and an engine setting from acceleration to top speed.
 - **Three modes:** GRAND PRIX (pick a cup, then race its three courses for points), ONLINE RACE (a lobby with the other players in the lot, AI rivals fill the grid to 30) and TIME ATTACK (two laps alone). Classes NOVICE, STANDARD and EXPERT set the rivals' pace.
+- **Three machines a race:** hit again with no energy left, or off the course with little left, and your machine blows apart; the spare comes out a couple of seconds later with full energy. The third wreck puts you out.
 - **Drift and nitro:** a drift fills the nitro gauge and gives a turbo when you let go; flying clean at speed builds flow, up to a quarter more top speed.
 - A weekly table of the best cup times, shown on the title screen.
 

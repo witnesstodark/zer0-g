@@ -24,7 +24,7 @@ import { Airflow } from './airflow.js'
 import { U } from './scale.js'
 import { ScreenFx } from './screenfx.js'
 import { boardTexture } from './boards.js'
-import { Online, TPS, SHOW } from './online.js'
+import { Online, TPS, SHOW, onRemoteWreck } from './online.js'
 import { Font, Overlay } from './ui.js'
 import { Hud } from './hud.js'
 import { Menus, LAPS, CUPS } from './menus.js'
@@ -293,6 +293,7 @@ export default async function start(p0) {
     fleet.setRacers(racers.map(r => ({ model: r.model, accent: r.accent, hue: r.hue, sat: r.sat })))
     director = new Director(cams, race)
     fallen.clear()
+    wrecks.clear()
     resultsShown = false
     accum = 0
     return race
@@ -300,6 +301,24 @@ export default async function start(p0) {
 
   // ---- events from the race: sounds, sparks, words
   const fallen = new Map()
+  const wrecks = new Map()            // racer -> { p, t }: a wreck burning where it blew apart
+  /** A machine blown apart at p: the fireball, pieces in its colours thrown out and falling, rings of the blast. */
+  function wreckBlast(p, r, f, close) {
+    fx.blast(p, r.accent, close ? 1 : 0.6)
+    fx.blast(p, 0xff7a20, close ? 0.7 : 0.4)
+    const v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0)
+    const parts = [new THREE.Color(r.accent).multiplyScalar(1.6), new THREE.Color(0.08, 0.08, 0.1), new THREE.Color(0.6, 0.62, 0.7), new THREE.Color(2.4, 1.1, 0.2)]
+    for (let k = 0; k < (close ? 46 : 18); k++) {
+      v.set(Math.random() - 0.5, 0.25 + Math.random() * 0.9, Math.random() - 0.5).normalize().multiplyScalar(2.5 + Math.random() * 6)
+      v.addScaledVector(f.f, r.sp * 0.35)
+      fx.spawn(p, v, parts[k % parts.length], 1.2 + Math.random() * 1.0, 0.07 + Math.random() * 0.1, 0.6, 9)
+    }
+    fx.ring(p, up, 0xffffff, 3.4 * U, 0.6)
+    fx.ring(p, f.f, 0xff8a30, 2.6 * U, 0.5)
+    fx.ring(p, f.r ?? up, 0xff3d1a, 2.0 * U, 0.45)
+  }
+  // when another screen's machine is wrecked
+  onRemoteWreck((r, last) => onEvent(last ? 'destroyed' : 'wreck', r, { lives: r.lives }))
   const near = (r, range = 22) => {
     const p = cams.racerFrame(r).p
     return Math.max(0, 1 - p.distanceTo(camera.position) / range)
@@ -422,13 +441,24 @@ export default async function start(p0) {
     } else if (kind === 'respawn') {
       // put back on the road where it last was safely: a flash and on it goes
       fallen.delete(r)
+      wrecks.delete(r)
       fx.ring(f.p, f.u, 0x29d3ff, 0.5 * U, 0.35)
-      if (mine) { cams.cut(); screen.flash(0x29d3ff, 0.6); audio.sfx('dash', { volume: 0.6, rate: 0.8 }); hud.note('BACK ON TRACK  ·  GO!', 1.4, 'gold') }
-    } else if (kind === 'destroyed') {
+      if (data?.spare) fx.ring(f.p, f.u, 0xffffff, 0.9 * U, 0.5)
+      if (mine) { cams.cut(); screen.flash(0x29d3ff, 0.6); audio.sfx('dash', { volume: 0.6, rate: 0.8 }); hud.note(data?.spare ? 'THE SPARE MACHINE  ·  GO!' : 'BACK ON TRACK  ·  GO!', 1.4, 'gold') }
+    } else if (kind === 'wreck' || kind === 'destroyed') {
+      // blown apart: a fireball, burning pieces of the machine thrown out, a shockwave; the wreck burns on
       const fall = fallen.get(r)
-      fx.blast(fall ? fall.p : f.p, r.accent, 0.4)
-      if (mine || near(r, 30) > 0.1) audio.sfx('explode', { volume: mine ? 1 : near(r, 30) * 0.8, gap: 0.1 })
-      if (mine) { cams.shake = 1; if (!fall) { audio.voice('retired'); hud.say('RETIRED', 2.5, 'red') } }
+      const p = fall ? fall.p.clone() : f.p.clone().addScaledVector(f.u, 0.1 * U)
+      fallen.delete(r)
+      wreckBlast(p, r, f, mine || near(r, 14) > 0.2)
+      // the camera's place to watch it from: back along the road and up
+      wrecks.set(r, { p, t: 0, from: p.clone().addScaledVector(f.f, -2.6 * U).addScaledVector(f.u, 1.5 * U).addScaledVector(f.r, 0.8 * U) })
+      if (mine || near(r, 30) > 0.1) { audio.sfx('explode', { volume: mine ? 1 : near(r, 30) * 0.8, gap: 0.1 }); if (mine) audio.sfx('mine', { volume: 0.8, rate: 0.7 }) }
+      if (mine) {
+        cams.shake = 1.8; cams.kick = 22; screen.flash(0xff5a1a, 1)
+        if (kind === 'destroyed') { audio.voice('retired'); hud.say('DESTROYED', 2.6, 'red', 'NO MACHINES LEFT: OUT OF THE RACE') }
+        else { audio.voice('out'); hud.say('WRECKED!', 1.8, 'red', `${data?.lives ?? r.lives} ${(data?.lives ?? r.lives) === 1 ? 'MACHINE' : 'MACHINES'} LEFT`) }
+      }
     } else if (kind === 'lap') {
       if (mine && race.mode !== 'attract') {
         audio.sfx('lap', { volume: 0.8 })
@@ -457,7 +487,21 @@ export default async function start(p0) {
     air.begin()
     let airNear = 0
     race.racers.forEach((r, i) => {
-      const visible = r.alive || (fallen.has(r) && r.falling)
+      const visible = (r.alive && !(r.wreckT > 0)) || (fallen.has(r) && r.falling)
+      // a wreck burning: flames and smoke rising where it blew apart
+      const wk = wrecks.get(r)
+      if (wk && (r.wreckT > 0 || !r.alive) && wk.t < 3.2) {
+        const was = wk.t
+        wk.t += dt
+        // a second blast as the tanks go, then it burns
+        if (was < 0.35 && wk.t >= 0.35) { fx.blast(wk.p, 0xffb040, 0.55); fx.ring(wk.p, new THREE.Vector3(0, 1, 0), 0xffd080, 1.6 * U, 0.4); if (r === me) { cams.shake = Math.max(cams.shake, 1); audio.sfx('explode', { volume: 0.6, rate: 1.25, gap: 0.05 }) } }
+        for (let k = 0; k < 3; k++) {
+          if (Math.random() > dt * 70 / 3) continue
+          VEL.set((Math.random() - 0.5) * 0.8, 1.0 + Math.random() * 1.8, (Math.random() - 0.5) * 0.8)
+          const hot = Math.random() < 0.6
+          fx.spawn(wk.p, VEL, hot ? FIRE : SMOKE, hot ? 0.6 + Math.random() * 0.5 : 1.2 + Math.random() * 0.8, hot ? 0.18 + Math.random() * 0.2 : 0.3 + Math.random() * 0.3, 1.2, hot ? -1.5 : -0.8)
+        }
+      }
       const f = cams.racerFrame(r, FR)
       if (r.falling && fallen.has(r)) {
         const fl = fallen.get(r)
@@ -564,6 +608,7 @@ export default async function start(p0) {
   const NITRO_A = new THREE.Color(2.4, 0.5, 2.0), NITRO_W = new THREE.Color(2.2, 2.0, 2.4), ZERO = new THREE.Vector3()
   const healK = new Float32Array(N)
   const FLAME_COLORS = models.map(m => new THREE.Color(m.flame))
+  const FIRE = new THREE.Color(2.2, 0.8, 0.15), SMOKE = new THREE.Color(0.12, 0.1, 0.14)
   const QD = new THREE.Quaternion(), BZ = new THREE.Vector3(), BX = new THREE.Vector3()
   const MARK_COLORS = [new THREE.Color(0.25, 0.9, 1.6), new THREE.Color(0.3, 0.8, 2.2), new THREE.Color(2.2, 0.9, 0.2), new THREE.Color(2.2, 0.35, 1.9)]
 
@@ -997,7 +1042,10 @@ export default async function start(p0) {
     }
 
     // ---- camera
-    if (state === 'race' && me && !resultsShown) cams.chase(me, dt, me.boostT > 0 || me.dashT > 0)
+    // your machine blown apart: the camera backs off and up to watch it burn, until the spare comes out
+    const wk = me && wrecks.get(me)
+    if (state === 'race' && me && !resultsShown && wk && (me.wreckT > 0 || !me.alive)) cams.watch(wk.from, wk.p, dt, 64, 3)
+    else if (state === 'race' && me && !resultsShown) cams.chase(me, dt, me.boostT > 0 || me.dashT > 0)
     else if (state === 'countdown' && me) cams.chase(me, dt, false)
     else director.update(dt)
 
