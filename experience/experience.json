@@ -1,7 +1,7 @@
 {
  "entry": "main.js",
  "name": "ZER0-G",
- "description": "Anti-gravity racing over Neon City after midnight. Three courses in a cup, one with a pipe you ride round and one with a drum you ride over. Eighteen machines, thirty racers. Arrows to fly, Space to drift, Shift for nitro.",
+ "description": "Anti-gravity racing over Neon City after midnight. A cup of three courses, one with a pipe you ride round, one with a drum you ride over. 18 machines, 30 racers, online races. Arrows to fly, Space to drift, Shift for nitro. Open source: github.com/witnesstodark/zer0-g",
  "maxPlayers": 32,
  "credits": [
   {
