@@ -308,7 +308,10 @@ export class Race {
     if (!air) {
       for (const j of t.jumps) {
         if (crossed(t, before, r.D, j.s1)) {
-          r.air = true; r.vh = 3.4 * U + r.sp / V * 0.52; r.h = 0.01
+          // a low, flat leap (round 15: it was 3.4U + sp/V*0.52, and a nitro flew 23 m and 3.5 m high, over the
+          // landing and into the wall): about a second in the air, a 4 m gap cleared from 5 m/s, and a nitro at
+          // 12 m/s flies 14 m and 1.2 m high
+          r.air = true; r.vh = 4.2 * U + r.sp / V * 0.15; r.h = 0.01
           r.sp += 0.3 * U
           if (r.drift) { r.drift = 0; r.driftArm = 0; this.events('driftEnd', r) }
           this.charge(r, 6)
@@ -469,7 +472,14 @@ export class Race {
     xt = clamp(xt, -W, W)
     // a drum or a pipe ahead: be on the line the road goes on from when it ends (a drum's exit is round its side)
     const exit = t.exitAhead(s, 3 + r.sp * 1.5)
-    if (exit !== null) xt = exit
+    if (exit !== null) {
+      // round a closed drum or pipe the short way (as the pull in its last metres does), or the two fight
+      const ic = t.index(s)
+      xt = t.isFull(ic) ? r.x + t.wrapX(ic, exit - r.x) : exit
+    }
+    // a jump plate ahead: take off near the middle and straight (no grip in the air to undo a slide, and the
+    // landings are open)
+    for (const j of t.jumps) if (t.wrapS(j.s1 - s) < 2 + r.sp * 0.6) { xt = clamp(xt, -0.35, 0.35); break }
     // aim from where the slide is taking it, not from where it is
     if (r.air) xt = clamp(xt, -0.4, 0.4)            // in the air: line up with the middle of the landing
     const xNext = r.x + r.sp * Math.sin(r.phi) * 0.18
@@ -549,8 +559,8 @@ export class Race {
           // nose to tail: the one behind slows, the one ahead is shoved
           const n = Math.sign(ds) || 1
           const push = depth * LEN * 0.92 * 0.6
-          if (!A.remote) A.D -= n * push * wA * 2
-          if (!B.remote) B.D += n * push * wB * 2
+          if (!A.remote) pushAlong(t, A, -n * push * wA * 2)
+          if (!B.remote) pushAlong(t, B, n * push * wB * 2)
           const rel = Math.max(0, (vsA - vsB) * n)
           hard = rel
           const back = n > 0 ? A : B, front = n > 0 ? B : A
@@ -674,6 +684,14 @@ export class Race {
     })
     this.ranked.forEach((r, k) => { r.rank = k + 1 })
   }
+}
+
+// a shove along the track: x follows the road the machine ends up on, so one pushed back over a drum's seam
+// (where its x was shifted) gets its old x back and is not shifted twice when it crosses again
+function pushAlong(t, r, dD) {
+  const D0 = r.D
+  r.D += dD
+  r.x -= dD > 0 ? t.seamShift(D0, r.D) : -t.seamShift(r.D, D0)
 }
 
 function setLateral(r, vx) {

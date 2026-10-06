@@ -18,6 +18,8 @@ const wait = ms => page.waitForTimeout(ms)
 const key = async k => { await page.keyboard.press(k); await wait(300) }
 await key('KeyW'); await key('KeyW'); await wait(400)
 await key('Space'); await key('Space'); await key('Space'); await wait(300)
+// node tools/sbx/cupcheck.mjs [cup]: the cup row is first on the course screen
+for (let k = 0; k < Number(process.argv[2] ?? 0); k++) await key('ArrowRight')
 await page.screenshot({ path: `${out}0-course.png` })
 await key('Space')
 for (let k = 0; k < 3; k++) {
@@ -27,7 +29,13 @@ for (let k = 0; k < 3; k++) {
   await page.evaluate(() => { const d = window.__dbg, m = d.me, L = d.race.track.length; m.D = d.race.laps * L - 1.5; m.lap = d.race.laps; m.sp = m.vmax })
   await wait(6500)
   await page.screenshot({ path: `${out}${k + 1}-results.png` })
-  console.log('race', k + 1, await page.evaluate(() => document.getElementById('hud').textContent.slice(0, 40)))
+  console.log('race', k + 1, await page.evaluate(() => window.__dbg.race.track.name + ' ' + window.__dbg.race.track.env))
+  // the cup standings: the points landing, then the rows settled
+  await key('Space'); await wait(500)
+  await page.screenshot({ path: `${out}${k + 1}-cup-a.png` })
+  await wait(2500)
+  await page.screenshot({ path: `${out}${k + 1}-cup-b.png` })
+  console.log('screen', await page.evaluate(() => window.__dbg.menus.screen))
   await key('Space')
 }
 await browser.close()

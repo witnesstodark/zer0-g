@@ -55,9 +55,12 @@ export class Cameras {
     const dir = this.tmp2.copy(road.f).multiplyScalar(0.75).addScaledVector(fr.f, 0.25).normalize()
     // only the directions are smoothed (the camera swings round in turns); the machine itself stays where
     // the camera puts it, so at speed it does not slide out of the picture
-    const kd = this.first ? 1 : 1 - Math.exp(-9 * dt)
+    // through a loop or a twist (the road's up far from the sky's) the camera turns with the machine, tightly, so the
+    // world wheels round it instead of the view lagging behind and losing it
+    const steep = 1 - THREE.MathUtils.clamp(road.u.y, 0, 1)
+    const kd = this.first ? 1 : 1 - Math.exp(-(9 + 14 * steep) * dt)
     this.dir = (this.dir ?? dir.clone()).lerp(dir, kd).normalize()
-    this.up.lerp(t.curved(t.index(r.D)) ? fr.u : road.u, this.first ? 1 : 1 - Math.exp(-8 * dt)).normalize()
+    this.up.lerp(t.curved(t.index(r.D)) ? fr.u : road.u, this.first ? 1 : 1 - Math.exp(-(8 + 22 * steep) * dt)).normalize()
     this.surge *= Math.exp(-dt * 2.5)
     // the pull: speeding up throws the machine forward, away from the camera; slowing down lets the camera
     // catch up (and a little closer). Out fast, back in slowly
@@ -79,7 +82,16 @@ export class Cameras {
   }
 
   /** A fixed spot looking at a moving point (the low trackside shot). */
+  /** A camera point out of whatever stands in the lot (the world's stands and blocks): slid towards what it watches. */
+  clearOf(from, at) {
+    if (!this.world?.solidAt?.(from, 0.3)) return from
+    const p = from.clone()
+    for (let k = 1; k <= 12; k++) { p.lerpVectors(from, at, k / 12 * 0.9); if (!this.world.solidAt(p, 0.3)) return p }
+    return from
+  }
+
   watch(from, at, dt, fov = 55, smooth = 10) {
+    from = this.clearOf(from, at)
     const k = 1 - Math.exp(-smooth * dt)
     this.pos.lerp(from, this.first ? 1 : k)
     this.look.lerp(at, this.first ? 1 : k)
@@ -131,7 +143,27 @@ export class Director {
     if (this.k >= this.shots.length) { if (!this.loop) { this.k = this.shots.length - 1; this.done = true; return } this.k = 0 }
     this.t = 0
     this.shot = this.shots[this.k]
+    this.sideX = null
     this.cams.cut()
+  }
+
+  /**
+   * Where beside the road a 'side' shot stands: its own offset if that spot and the line from it to the road are
+   * clear of the stands and the blocks (cams.world.solidAt), else the other side, nearer, or farther.
+   */
+  clearSide(s, p, f, u, rr) {
+    const world = this.cams.world, L = this.cams.lot, x = s.x ?? 2.4
+    if (!world?.solidAt) return x
+    const q = V()
+    for (const c of [x, -x, x * 0.65, -x * 0.65, x * 1.4, -x * 1.4, x * 0.4, -x * 0.4]) {
+      let ok = true
+      for (let k = 1; k <= 8 && ok; k++) {
+        q.copy(p).addScaledVector(rr, c * k / 8).addScaledVector(u, s.h ?? 0.35).addScaledVector(f, (s.ahead ?? 0) * k / 8)
+        if (world.solidAt(q, 0.3)) ok = false
+      }
+      if (ok && Math.abs(q.x) < L.width / 2 - 0.5 && Math.abs(q.z) < L.depth / 2 - 0.5 && q.y > 0.4) return c
+    }
+    return x * 0.4
   }
 
   update(dt) {
@@ -145,7 +177,8 @@ export class Director {
     if (s.kind === 'side') {
       const p = V(), f = V(), u = V(), rr = V()
       t.frame(s.s, p, f, u, rr)
-      const from = V().copy(p).addScaledVector(rr, s.x ?? 2.4).addScaledVector(u, s.h ?? 0.35).addScaledVector(f, s.ahead ?? 0)
+      if (this.sideX === null) this.sideX = this.clearSide(s, p, f, u, rr)
+      const from = V().copy(p).addScaledVector(rr, this.sideX).addScaledVector(u, s.h ?? 0.35).addScaledVector(f, s.ahead ?? 0)
       // watch the racer nearest the spot, ahead of it or just past it
       let target = null, best = 1e9
       for (const r of race.racers) {

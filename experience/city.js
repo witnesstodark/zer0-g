@@ -6,6 +6,7 @@
 import * as THREE from 'three'
 import { fogChunk, shared } from './look.js'
 import { jumbotron, ribbon } from './boards.js'
+import { Clearance, standRuns, crowdSeats, wallPaths, placeScreens, placeLogo } from './clearance.js'
 
 export class City {
   constructor(lot, track, pictures, random) {
@@ -14,6 +15,10 @@ export class City {
     this.random = random
     this.group = new THREE.Group()
     this.group.name = 'city'
+    // the room the course needs (the arena's stands, screens and ribbons keep out of it) and the solid things in the
+    // lot (the director keeps its cameras out of them)
+    this.clear = new Clearance(track)
+    this.solids = []
     this.sky = this.makeSky()
     this.group.add(this.sky)
     this.group.add(this.makeGround())
@@ -26,6 +31,17 @@ export class City {
 
   update(dt, camera) {
     this.sky.position.copy(camera.position)
+  }
+
+  /** Something solid stands in the box [x0, x1] x [0, y1] x [z0, z1] (for the cameras). */
+  solid(x0, x1, y1, z0, z1) { this.solids.push([x0, x1, y1, z0, z1]) }
+
+  /** Is the point p inside something solid (grown by pad)? */
+  solidAt(p, pad = 0.25) {
+    for (const [x0, x1, y1, z0, z1] of this.solids) {
+      if (p.x > x0 - pad && p.x < x1 + pad && p.z > z0 - pad && p.z < z1 + pad && p.y < y1 + pad) return true
+    }
+    return false
   }
 
   // ------------------------------------------------------------ sky and skyline
@@ -161,6 +177,7 @@ export class City {
         if (room < 1.2) continue
         const h = Math.min(room, 2 + Math.pow(rnd(), 1.6) * 16)
         blocks.push([cx, cz, w, h, d])
+        this.solid(cx - w / 2, cx + w / 2, h, cz - d / 2, cz + d / 2)
       }
     }
     // the city round the arena: towers on a grid of 14 m plots with streets between them, no two
@@ -188,7 +205,9 @@ export class City {
         varying vec3 vNormal;
         varying vec3 vLocal;
         varying vec3 vSize;
-        varying float vSeed;
+        // flat: a seed interpolated across a wall comes out a hair different pixel to pixel, and the hashes of it
+        // flickered the windows in stripes
+        flat varying float vSeed;
         void main() {
           vSize = aSize;
           vSeed = aSeed;
@@ -199,12 +218,12 @@ export class City {
           gl_Position = projectionMatrix * viewMatrix * w;
         }`,
       fragmentShader: fogChunk + /* glsl */`
-        uniform float uTime;
+        uniform float uTime, uPx;
         varying vec3 vWorld;
         varying vec3 vNormal;
         varying vec3 vLocal;
         varying vec3 vSize;
-        varying float vSeed;
+        flat varying float vSeed;
         void main() {
           vec3 n = normalize(vNormal);
           vec3 col = vec3(0.025, 0.022, 0.05);
@@ -213,19 +232,21 @@ export class City {
           if (abs(n.y) < 0.5) {
             // windows: a grid on the walls, some lit
             float along = abs(n.x) > 0.5 ? vLocal.z : vLocal.x;
-            float cellW = 0.15 + big * 0.5;
-            vec2 w = vec2(along / cellW, vLocal.y / (0.185 + big * 0.55));
-            // how many windows a pixel covers, from the distance and the angle: smooth from pixel to pixel
-            // (a fade by fwidth jumps between 2x2 pixel blocks, and the windows crawled like sand)
+            float cellW = 0.15 + big * 0.5, cellH = 0.185 + big * 0.55;
+            vec2 w = vec2(along / cellW, vLocal.y / cellH);
+            // a cell's size on the screen, from the distance and the angle (smooth from pixel to pixel: a fade by
+            // fwidth jumps between 2x2 pixel blocks, and the windows crawled like sand). Windows are drawn one by
+            // one only while a cell is several pixels across, their edges box-filtered; smaller, an even glow
             vec3 toCam = cameraPosition - vWorld;
             float dist = length(toCam);
             float facing = max(abs(dot(n, toCam / dist)), 0.12);
-            float fade = clamp(1.6 - dist * 0.0013 / facing / cellW * 2.5, 0.0, 1.0);
+            vec2 cpx = vec2(cellW * facing, cellH) * uPx / dist;
+            float fade = smoothstep(3.0, 7.0, min(cpx.x, cpx.y));
             vec2 cell = floor(w);
             float lit = step(0.55, hash21(cell + mod(vSeed * 17.0, 97.0)));
-            float win = step(0.22, fract(w.x)) * step(0.3, fract(w.y)) * step(0.5, vLocal.y);
+            float win = boxStep(w.x, 0.22, 1.0 / cpx.x) * boxStep(w.y, 0.3, 1.0 / cpx.y) * step(0.5, vLocal.y);
             vec3 wc = mix(vec3(1.0, 0.75, 0.45), vec3(0.4, 0.85, 1.0), hash21(cell * 1.3 + mod(vSeed, 53.0)));
-            col += wc * mix(0.45 * 0.25, lit * win, fade) * 0.55;
+            col += mix(vec3(0.7, 0.8, 0.75) * 0.45 * 0.25, wc * lit * win, fade) * 0.55;
             // a neon stripe up one corner and under the roof
             float edgeX = abs(along) / (abs(n.x) > 0.5 ? vSize.z : vSize.x) * 2.0;
             col += accent * smoothstep(0.9, 0.96, edgeX) * step(0.4, hash11(vSeed * 5.0)) * 0.9 * fade;
@@ -261,14 +282,11 @@ export class City {
     const L = this.lot
     const group = new THREE.Group()
     group.name = 'arena'
-    // stands along both long sides: tiers rising outwards
-    const tiers = []
-    for (const side of [-1, 1]) {
-      for (let k = 0; k < 6; k++) {
-        const x = side * (11.6 + k * 0.7)
-        tiers.push([x, -17.5, 0.75, 0.8 + k * 1.1, 35])
-      }
-    }
+    // stands along both long sides: tiers rising outwards, cut back where the course runs through them
+    const stands = standRuns(this.clear)
+    this.stands = stands
+    const tiers = stands.tiers.map(t => [t.x, t.z0, 0.75, t.h, t.z1 - t.z0])
+    for (const [x, z, w, h, d] of tiers) this.solid(x - w / 2, x + w / 2, h, z, z + d)
     const tierGeo = new THREE.BoxGeometry(1, 1, 1)
     tierGeo.translate(0, 0.5, 0)
     const tierMat = new THREE.ShaderMaterial({
@@ -280,12 +298,15 @@ export class City {
         varying vec3 vWorld; varying vec3 vNormal;
         void main() {
           vec3 col = vec3(0.03, 0.03, 0.06);
-          // a light strip on each step's nose
-          col += vec3(0.8, 0.15, 1.2) * smoothstep(0.06, 0.0, abs(fract(vWorld.y + 0.0) - 0.0)) * step(0.5, vNormal.y);
+          // a light strip along each step's nose (its top's inner edge), never at the floor
+          float nose = smoothstep(0.07, 0.0, abs(abs(vWorld.x) - floor((abs(vWorld.x) - 11.225) / 0.7 + 0.5) * 0.7 - 11.225));
+          col += vec3(0.8, 0.15, 1.2) * nose * step(0.5, vNormal.y) * step(0.5, vWorld.y);
           gl_FragColor = vec4(applyFog(col, vWorld), 1.0);
         }`,
     })
-    const tierMesh = new THREE.InstancedMesh(tierGeo, tierMat, tiers.length)
+    const tierMesh = new THREE.InstancedMesh(tierGeo, tierMat, Math.max(1, tiers.length))
+    tierMesh.count = tiers.length
+    tierMesh.name = 'stands'
     const m = new THREE.Matrix4()
     tiers.forEach(([x, z, w, h, d], i) => { m.makeScale(w, h, d).setPosition(x, 0, z + d / 2); tierMesh.setMatrixAt(i, m) })
     group.add(tierMesh)
@@ -297,20 +318,21 @@ export class City {
       uniforms: { ...shared, uCheer: { value: 0 } },
       vertexShader: /* glsl */`
         attribute vec4 aSeat;
-        uniform float uTime, uCheer;
+        uniform float uTime, uCheer, uPx;
         varying vec3 vColor;
         varying vec3 vWorld;
         void main() {
+          float grow = max(1.0, 1.5 / (0.035 * uPx / max(length(cameraPosition - aSeat.xyz), 0.1)));
           float ph = aSeat.w * 6.2831;
           float wave = sin(uTime * (3.0 + uCheer * 4.0) + ph) * (0.03 + uCheer * 0.04);
           vec3 base = aSeat.xyz + vec3(0.0, wave + uCheer * 0.05 * max(0.0, sin(uTime * 9.0 + ph)), 0.0);
           // face the camera
           vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
           vec3 up = vec3(0.0, 1.0, 0.0);
-          vec3 p = base + right * position.x + up * position.y;
+          vec3 p = base + (right * position.x + up * position.y) * grow;
           vWorld = p;
           float c = fract(aSeat.w * 7.0);
-          vColor = c < 0.33 ? vec3(0.2, 1.2, 1.8) : (c < 0.66 ? vec3(1.8, 0.25, 1.4) : vec3(1.8, 1.2, 0.3));
+          vColor = (c < 0.33 ? vec3(0.2, 1.2, 1.8) : (c < 0.66 ? vec3(1.8, 0.25, 1.4) : vec3(1.8, 1.2, 0.3))) / (grow * grow);
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
         }`,
       fragmentShader: fogChunk + /* glsl */`
@@ -319,11 +341,9 @@ export class City {
     })
     const crowd = new THREE.InstancedMesh(crowdGeo, crowdMat, n)
     const seat = new Float32Array(n * 4)
-    for (let i = 0; i < n; i++) {
-      const side = i % 2 ? 1 : -1
-      const k = Math.floor(this.random() * 6)
-      seat.set([side * (11.6 + k * 0.7 + 0.2 + this.random() * 0.35), 0.8 + k * 1.1 + 0.35, -17.3 + this.random() * 34.6, this.random()], i * 4)
-    }
+    const seats = crowdSeats(stands.tiers, n, this.random)
+    crowd.count = seats.length
+    seats.forEach((s, i) => seat.set([...s, this.random()], i * 4))
     crowdGeo.setAttribute('aSeat', new THREE.InstancedBufferAttribute(seat, 4))
     crowd.frustumCulled = false
     crowd.name = 'crowd'
@@ -337,13 +357,14 @@ export class City {
     for (const [x, z, sx, sz] of [[0, -hd, L.width - 0.8, 0.12], [0, hd, L.width - 0.8, 0.12], [-hw, 0, 0.12, L.depth - 0.8], [hw, 0, 0.12, L.depth - 0.8]]) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.12, sz), ringMat)
       bar.position.set(x, top, z)
-      group.add(bar)
+      if (!this.clear.hits(x - sx / 2, x + sx / 2, top - 0.1, top + 0.1, z - sz / 2, z + sz / 2, 0.3)) group.add(bar)
       const bar2 = bar.clone()
-      bar2.position.y = 0.06
+      bar2.position.y = 0.07
       group.add(bar2)
     }
     const towerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.25, 1.3) })
     for (const x of [-hw, hw]) for (const z of [-hd, hd]) {
+      if (this.clear.hits(x - 0.1, x + 0.1, 0, top, z - 0.1, z + 0.1, 0.4)) continue
       const t = new THREE.Mesh(new THREE.BoxGeometry(0.16, top, 0.16), towerMat)
       t.position.set(x, top / 2, z)
       group.add(t)
@@ -354,31 +375,27 @@ export class City {
     // fronts of the stands
     if (pictures.board) {
       const tex = pictures.board
-      const put = (w, x, y, z, rotY, offset) => {
+      placeScreens(this.clear, L, (w, x, y, z, rotY, offset) => {
         const j = jumbotron(tex, w, w * 9 / 16, offset)
         j.position.set(x, y, z)
         j.rotation.y = rotY
         group.add(j)
-      }
-      put(16, 0, 19, -L.depth / 2 + 0.6, 0, 0)
-      put(16, 0, 19, L.depth / 2 - 0.6, Math.PI, 0)
-      put(7, L.width / 2 - 0.6, 15, -12, -Math.PI / 2, 9.3)
-      put(6, L.width / 2 - 0.6, 11.6, 14.5, -Math.PI / 2, 21.7)
-      put(10, -L.width / 2 + 0.6, 15, 8, Math.PI / 2, 4.1)
-      put(9, -L.width / 2 + 0.6, 21.5, -10, Math.PI / 2, 15.2)
+      })
       const hw = L.width / 2 - 0.35, hd = L.depth / 2 - 0.35
-      group.add(ribbon(tex, [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]], 7.0, 1.2))
-      group.add(ribbon(tex, [[11.2, -17.4], [11.2, 17.4]], 0.1, 0.6, { closed: false }))
-      group.add(ribbon(tex, [[-11.2, 17.4], [-11.2, -17.4]], 0.1, 0.6, { closed: false }))
+      for (const path of wallPaths(this.clear, [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]], 7.0, 1.2)) group.add(ribbon(tex, path, 7.0, 1.2, { closed: false }))
+      for (const f of stands.fronts) group.add(ribbon(tex, f.side > 0 ? [[f.x, f.z0], [f.x, f.z1]] : [[f.x, f.z1], [f.x, f.z0]], 0.1, 0.6, { closed: false }))
     }
     const aspect = t => (t.image ? t.image.height / t.image.width : 0.5625)
     if (pictures.logo) {
       // the title in lights across the top of the east stand
       const mat = new THREE.MeshBasicMaterial({ map: pictures.logo, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })
-      const logo = new THREE.Mesh(new THREE.PlaneGeometry(10, 10 * aspect(pictures.logo)), mat)
-      logo.position.set(L.width / 2 - 0.6, 10.5, 6)
-      logo.rotation.y = -Math.PI / 2
-      group.add(logo)
+      const at = placeLogo(this.clear, L, 10, 10 * aspect(pictures.logo))
+      if (at) {
+        const logo = new THREE.Mesh(new THREE.PlaneGeometry(10, 10 * aspect(pictures.logo)), mat)
+        logo.position.set(...at)
+        logo.rotation.y = -Math.PI / 2
+        group.add(logo)
+      }
     }
     return group
   }

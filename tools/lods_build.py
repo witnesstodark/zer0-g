@@ -48,6 +48,93 @@ F /= np.linalg.norm(F, axis=1)[:, None]
 U = U - F * np.sum(U * F, 1)[:, None]; U /= np.linalg.norm(U, axis=1)[:, None]
 R = np.cross(F, U); R /= np.linalg.norm(R, axis=1)[:, None]
 
+# the room the course needs (as experience/clearance.js): the road across its width and the space over it; the
+# stands, the screens and the ribbons keep out of it
+_HW = track['width'] / 2 + 0.3
+CLEAR = np.concatenate([P[::2] + R[::2] * a * _HW + U[::2] * h * 2.4 for a in (-1, -0.5, 0, 0.5, 1) for h in (0, 0.5, 1)])
+
+
+def hits(x0, x1, y0, y1, z0, z1, pad=0.5):
+    c = CLEAR
+    return bool(np.any((c[:, 0] >= x0 - pad) & (c[:, 0] <= x1 + pad) & (c[:, 1] >= y0 - pad) & (c[:, 1] <= y1 + pad) & (c[:, 2] >= z0 - pad) & (c[:, 2] <= z1 + pad)))
+
+
+def stand_runs(x0=11.6, step=0.7, w=0.75, h0=0.8, dh=1.1, count=6, z0=-17.5, z1=17.5, chunk=1.0, crowd=0.7, mn=2):
+    """The stands cut back where the course runs through them (as standRuns in clearance.js): tiers
+    [(side, k, x, z0, z1, h)] and fronts [(side, x, z0, z1)]."""
+    nn = int(round((z1 - z0) / chunk))
+    tiers, fronts = [], []
+    for side in (-1, 1):
+        keep = []
+        for k in range(count):
+            x, h = side * (x0 + k * step), h0 + k * dh
+            row = [not hits(x - w / 2, x + w / 2, 0, h + crowd, z0 + j * chunk, z0 + (j + 1) * chunk) for j in range(nn)]
+            j = 0
+            while j < nn:
+                if not row[j]:
+                    j += 1
+                    continue
+                e = j
+                while e < nn and row[e]:
+                    e += 1
+                if e - j < mn:
+                    for q in range(j, e):
+                        row[q] = False
+                else:
+                    tiers.append((side, k, x, z0 + j * chunk, z0 + e * chunk, h))
+                j = e
+            keep.append(row)
+        run = None
+        for j in range(nn + 1):
+            k = next((k for k in range(count) if keep[k][j]), -1) if j < nn else -1
+            x = None if k < 0 else side * (x0 + k * step - w / 2 - 0.03)
+            if run and run[1] == x:
+                run[3] = z0 + (j + 1) * chunk
+                continue
+            if run:
+                fronts.append(tuple(run))
+            run = None if x is None else [side, x, z0 + j * chunk, z0 + (j + 1) * chunk]
+    return tiers, [f for f in fronts if f[3] - f[2] >= mn * chunk]
+
+
+STANDS, FRONTS = stand_runs()
+
+
+def wall_paths(corners, y, h, piece=1.0, mn=3.0):
+    """A ribbon round the walls at y, broken where the course comes near (as wallPaths in clearance.js)."""
+    paths, path = [], None
+    for c in range(len(corners)):
+        (ax, az), (bx, bz) = corners[c], corners[(c + 1) % len(corners)]
+        m = max(1, int(round(math.hypot(bx - ax, bz - az) / piece)))
+        for k in range(m):
+            p0 = (ax + (bx - ax) * k / m, az + (bz - az) * k / m)
+            p1 = (ax + (bx - ax) * (k + 1) / m, az + (bz - az) * (k + 1) / m)
+            free = not hits(min(p0[0], p1[0]) - 0.2, max(p0[0], p1[0]) + 0.2, y, y + h, min(p0[1], p1[1]) - 0.2, max(p0[1], p1[1]) + 0.2, 0.4)
+            if free:
+                if path is None:
+                    path = [p0]
+                path.append(p1)
+            elif path is not None:
+                paths.append(path)
+                path = None
+    if path is not None:
+        paths.append(path)
+    if len(paths) > 1 and paths[0][0] == paths[-1][-1]:
+        paths[0] = paths[-1] + paths[0][1:]
+        paths.pop()
+    length = lambda q: sum(math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]) for i in range(1, len(q)))
+    return [q for q in paths if length(q) >= mn]
+
+
+def place(cands, w, h, along, depth=0.6):
+    """The first candidate centre (x, y, z) where a screen w x h along 'x' or 'z' keeps clear, or None."""
+    for x, y, z in cands:
+        hx = w / 2 + 0.3 if along == 'x' else depth
+        hz = w / 2 + 0.3 if along == 'z' else depth
+        if not hits(x - hx, x + hx, y - h / 2 - 0.3, y + h / 2 + 0.3, z - hz, z + hz):
+            return (x, y, z)
+    return None
+
 
 def frame(s):
     """Position, forward, up, right at s (lot coordinates), interpolated."""
@@ -220,10 +307,8 @@ def arena(detail=1.0, floor=0.1):
                     blocks += 1
             z += 2.6
         x += 2.6
-    for side in (-1, 1):
-        for k in range(6):
-            h = 0.8 + k * 1.1
-            box(bm, uvl, B((side * (11.6 + k * 0.7), h / 2, 0)), (0.75, 35, h), UV(0.35, h))
+    for side, k, x, z0, z1, h in STANDS:
+        box(bm, uvl, B((x, h / 2, (z0 + z1) / 2)), (0.75, z1 - z0, h), UV(0.35, h))
     top = LOT_H - 1.2
     hw, hd = LOT_W / 2 - 0.4, LOT_D / 2 - 0.4
     for y in (0.08, top):
@@ -233,7 +318,8 @@ def arena(detail=1.0, floor=0.1):
         box(bm, uvl, B((hw, y, 0)), (0.12, LOT_D - 0.8, 0.12), UV(0.55, 0.5))
     for x in (-hw, hw):
         for z in (-hd, hd):
-            box(bm, uvl, B((x, top / 2, z)), (0.16, 0.16, top), UV(0.6, 0.5))
+            if not hits(x - 0.08, x + 0.08, 0, top, z - 0.08, z + 0.08, 0.4):
+                box(bm, uvl, B((x, top / 2, z)), (0.16, 0.16, top), UV(0.6, 0.5))
     # pylons under the raised parts of the course, where nothing of the course is below
     pylons = 0
     if detail >= 1:
@@ -284,19 +370,24 @@ def band(bm, uvl, pts, y, h, code, closed=True):
 def screens():
     bm, uvl = new_bm()
     hd, hw = LOT_D / 2 - 0.35, LOT_W / 2 - 0.35
-    # four jumbotrons, both sides playing: the ends and the long sides
-    jumbo(bm, uvl, (0, 18.5, -hd), (0, 0, -1), 16, 9, 0)
-    jumbo(bm, uvl, (0, 18.5, hd), (0, 0, 1), 16, 9, 2)
-    jumbo(bm, uvl, (hw, 14.5, -4), (1, 0, 0), 10, 5.625, 4)
-    jumbo(bm, uvl, (-hw, 14.5, 4), (-1, 0, 0), 10, 5.625, 6)
+    # four jumbotrons, both sides playing: the ends and the long sides, each moved until it keeps clear of the course
+    for z, nz, k in ((-hd, -1, 0), (hd, 1, 2)):
+        at = place([(x, y, z) for y in (18.5, 21.5, 16, 13.5) for x in (0, -3, 3)], 16, 9, 'x')
+        if at:
+            jumbo(bm, uvl, at, (0, 0, nz), 16, 9, k)
+    for x, nx, z, k in ((hw, 1, -4, 4), (-hw, -1, 4, 6)):
+        at = place([(x, 14.5 + dy, z + dz) for dy in (0, 3, -3, 6, -6) for dz in (0, 4, -4, 8, -8)], 10, 5.625, 'z')
+        if at:
+            jumbo(bm, uvl, at, (nx, 0, 0), 10, 5.625, k)
     # the sponsor ribbons round the arena, above the stands and under the ring of light, read from both sides
     ring = [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]
     for y in (7.0, 24.3):
-        band(bm, uvl, ring, y, 1.2, 0.7)
-        band(bm, uvl, ring[::-1], y, 1.2, 0.9)
+        for path in wall_paths(ring, y, 1.2):
+            band(bm, uvl, path, y, 1.2, 0.7, closed=False)
+            band(bm, uvl, path[::-1], y, 1.2, 0.9, closed=False)
     # the boards along the fronts of the stands
-    band(bm, uvl, [(11.2, -17.4), (11.2, 17.4)], 0.1, 0.6, 0.8, closed=False)
-    band(bm, uvl, [(-11.2, 17.4), (-11.2, -17.4)], 0.1, 0.6, 0.8, closed=False)
+    for side, x, z0, z1 in FRONTS:
+        band(bm, uvl, [(x, z0), (x, z1)] if side > 0 else [(x, z1), (x, z0)], 0.1, 0.6, 0.8, closed=False)
     return bm
 
 
@@ -617,9 +708,9 @@ for a in range(len(rows) - 1):
     if any(GAP[(rows[a] + q) % n] for q in range(rows[a + 1] - rows[a] + 1)):
         continue
     face(bm, uvl, [grid[a][0], grid[a + 1][0], grid[a + 1][1], grid[a][1]], [CY] * 4)
-for side in (-1, 1):
+for side, k, x, z0, z1, h in STANDS:
     r = bmesh.ops.create_cube(bm, size=1.0)
-    bmesh.ops.transform(bm, matrix=Matrix.Translation(B((side * 13.4, 3.4, 0))) @ Matrix.Diagonal((4.2, 35, 6.8, 1)), verts=r['verts'])
+    bmesh.ops.transform(bm, matrix=Matrix.Translation(B((x, h / 2, (z0 + z1) / 2))) @ Matrix.Diagonal((0.75, z1 - z0, h, 1)), verts=r['verts'])
     for f in {f for v in r['verts'] for f in v.link_faces}:
         for loop in f.loops:
             loop[uvl].uv = ST

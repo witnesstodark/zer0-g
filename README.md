@@ -8,14 +8,16 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 
 ## What is in the game
 
-- **Three courses** in a cup: NEON CITY (400 m, with a loop, a corkscrew and a spiral), SKY PIPE (249 m, with a pipe you ride round, walls and ceiling) and THE DRUM (247 m, with a cylinder you ride on the outside). Open stretches without barriers, jumps you can fly off, and an instant respawn when you fall.
+- **Three cups of three courses.** The ZER0-G Cup over Neon City: NEON CITY (a loop, a corkscrew and a spiral), SKY PIPE (a pipe you ride round, walls and ceiling) and THE DRUM (a cylinder you ride on the outside). The NOVA CUP in deep space: PULSAR RUN, NEBULA KNOT and ORBIT GATE. The DUST CUP in a red desert: SCORCH STRIP, RUST MESA and SAND TWISTER. The later cups are longer and harder, with courses that climb round after round and come back down, hairpins, chicanes, open edges and canyons you can ride up the walls of. Open stretches without barriers, jumps you can fly off, and an instant respawn when you fall.
 - **Eighteen machines**, each with its own pilot and stats (body, boost, grip, weight) and an engine setting from acceleration to top speed.
-- **Three modes:** GRAND PRIX (the ZER0-G Cup, all three courses for points), ONLINE RACE (a lobby with the other players in the lot, AI rivals fill the grid to 30) and TIME ATTACK (two laps alone). Classes NOVICE, STANDARD and EXPERT set the rivals' pace.
+- **Three modes:** GRAND PRIX (pick a cup, then race its three courses for points), ONLINE RACE (a lobby with the other players in the lot, AI rivals fill the grid to 30) and TIME ATTACK (two laps alone). Classes NOVICE, STANDARD and EXPERT set the rivals' pace.
 - **Drift and nitro:** a drift fills the nitro gauge and gives a turbo when you let go; flying clean at speed builds flow, up to a quarter more top speed.
 - A weekly table of the best cup times, shown on the title screen.
 
 | | |
 |---|---|
+| ![Choosing a cup](docs/cup-select.webp) | ![The nine courses as the course cards show them](docs/course-pictures.webp) |
+| ![PULSAR RUN in deep space](docs/race-space.webp) | ![SCORCH STRIP in the red desert](docs/race-desert.webp) |
 | ![Machine select](docs/machine-select.webp) | ![Racing: the standings and the map](docs/hud-compact.webp) |
 | ![A drift](docs/drift-slide.webp) | ![SKY PIPE](docs/pipe-ceiling.webp) |
 | ![The machine select stand](docs/flames-select.webp) | ![The online lobby](docs/online-lobby.webp) |
@@ -39,6 +41,8 @@ Menus: arrows or WASD to move, Space to choose, Backspace to go back, Q / E for 
 ## How it runs
 
 ZER0-G is a Project 0 *experience*: the game runs in a sandboxed web worker with three.js r186 and the `p0` API (input, the screen overlay, a shared session for online play, scores and the weekly table). `experience/main.js` is the entry point and `experience/experience.json` is its manifest. There is no build step for the platform: the server bundles the folder when it is published.
+
+Each course says which world it runs in (`env` in its JSON: the city, space or the desert), and `experience/environments.js` builds that world round it. `experience/clearance.js` keeps the stands, the screens, the ribbons and the director's cameras out of the road's way, so a course can use the whole lot. The course cards' pictures are rendered from the real track meshes when the game starts (`experience/heroes.js`).
 
 The lot is also visible from the street as a smaller build (`lods/`): the arena as a diorama with sixteen machines racing the course on the world clock.
 
@@ -74,7 +78,7 @@ The Playwright scripts in `tools/` and `tools/sbx/` (screenshots, two-player onl
 
 | What | How |
 |---|---|
-| Courses | `python tools/track_design.py experience/assets/track1.json shots/track1.png neon` (`pipe` for track2, `drum` for track3). Writes the course and a plan image, and checks the lot's box, clearance and curvature. |
+| Courses | `python tools/track_design.py experience/assets/track1.json shots/track1.png neon`. The designs are `neon`, `pipe` and `drum` (tracks 1 to 3), `pulsar`, `nebula` and `orbit` (4 to 6), `scorch`, `mesa` and `twister` (7 to 9). Writes the course and a plan image, and checks the lot's box, clearance and curvature. |
 | Machines | Tripo P2 meshes (see `sources/machines/`), then `blender -b --factory-startup --python tools/machine_prep.py -- <meshes dir> experience/assets/machines` turns, scales, decimates and bakes the glow maps. |
 | UI, font, screens | `python tools/ui_prep.py`, `python tools/font_atlas.py`, `python tools/screens_atlas.py`, `node tools/screens_glsl.mjs` |
 | Audio | `python tools/audio_pack.py` levels and packs the music and effects into `experience/assets/`. |

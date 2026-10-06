@@ -52,7 +52,9 @@ const p0 = {
     mine() { return sampleMachine(params.get('entity'), p0.me.id) },
     of(id) { return sampleMachine(params.get('entity') ?? '1', id) },
   },
-  time: 0, game: null, table: null, debugAutopilot: params.get('auto') === '1', debugHooks: o => { window.__dbg = o },
+  time: 0, game: null, table: null, debugAutopilot: params.get('auto') === '1',
+  // ?env=space|desert: every course in that world (the game reads p0.debugEnv; never set in the game)
+  debugEnv: params.get('env') || null, debugHooks: o => { window.__dbg = o },
   win() { console.log('[p0] win') }, score(n) { console.log('[p0] score', n) }, items: { give() {} },
 }
 // ?pid=N: a shared session between tabs of one browser (a BroadcastChannel stands in for the server): the

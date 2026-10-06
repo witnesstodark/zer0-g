@@ -54,7 +54,7 @@ export const MACHINES = PILOTS
 
 // the other pilots of the field (in the pilots' machines, a little off in colour)
 export const RIVALS = [
-  'JAX ORTEGA', 'NIKA SOL', 'BIG TOMMO', 'VEGA-9', 'RIKU TANE', 'DOC FENWICK', 'ZARA QUILL', 'OMAR KADE', 'PIXEL', 'LADY CHROME',
+  'JAX ORTEGA', 'NIKA SOL', 'BIG TOMMO', 'VEGA-9', 'RIKU TANE', 'DOC FENWICK', 'ZARA QUILL', 'OMAR KADE', 'PIX VANCE', 'LADY CHROME',
   'MAKO', 'IGOR STRAND', 'SKYE NOVAK', 'BRUNO VALE', 'KIT RUSH', 'THE BARON', 'NEON JOE', 'YUKI ARA', 'GHOST-77', 'RAMONA DIAZ',
   'TITAN KOVA', 'LEX CUTTER', 'DOT', 'FINN HARLOW', 'SABLE', 'COMET KID', 'ANYA VOLK', 'MR. MAK', 'HEX', 'ROXY BLAZE',
 ]

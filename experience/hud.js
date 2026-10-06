@@ -92,9 +92,9 @@ export class Hud {
       f.draw(c, text, 500, 100, text.length <= 3 ? 150 : 96, { color, align: 'center', glow: style === 'red' ? 'rgba(255,40,60,0.8)' : 'rgba(41,211,255,0.8)', glowBlur: 30 })
       if (sub) f.draw(c, sub, 500, 196, 30, { color: '#ffffff', align: 'center' })
     }).place('c', 0, -60)
-    this.small = overlay.panel(700, 70, (c, text, style) => {
-      f.draw(c, text, 350, 36, 30, { color: style === 'gold' ? GOLD : style === 'red' ? RED : PINK, align: 'center', glow: 'rgba(255,43,214,0.6)' })
-    }).place('c', 0, 130)
+    this.small = overlay.panel(700, 50, (c, text, style) => {
+      f.draw(c, text, 350, 26, 22, { color: style === 'gold' ? GOLD : style === 'red' ? RED : PINK, align: 'center', glow: style === 'gold' ? 'rgba(255,170,30,0.55)' : 'rgba(255,43,214,0.55)' })
+    }).place('t', 0, 96)
     this.panels = [this.time, this.board, this.lap, this.power, this.rank, this.speed, this.map, this.msg, this.small]
     this.msgT = 0; this.msgDur = 0; this.smallT = 0; this.smallDur = 0
     this.frame = 0
@@ -102,6 +102,7 @@ export class Hud {
   }
 
   show(on) {
+    this.shown = on
     for (const p of this.panels) p.show(on)
     if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur) }
   }
@@ -111,14 +112,14 @@ export class Hud {
     this.msg.update(`${text}|${sub}|${style}`, text, sub, style)
     this.msgT = 0
     this.msgDur = dur
-    this.msg.show(true)
+    this.msg.show(this.shown !== false)
   }
 
   note(text, dur = 1.5, style = 'pink') {
     this.small.update(`${text}|${style}`, text, style)
     this.smallT = 0
     this.smallDur = dur
-    this.small.show(true)
+    this.small.show(this.shown !== false)
   }
 
   /** A pilot's portrait in a frame of their colour (the bitmaps are stored upside down, for the GPU). */

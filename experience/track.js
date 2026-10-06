@@ -20,6 +20,8 @@ export class Track {
     this.name = data.name + (mirror ? ' MIRROR' : '')
     this.id = data.id ?? 0
     this.mirror = mirror
+    this.blurb = data.blurb ?? null      // a line for the course's card
+    this.env = data.env ?? 'city'
     this.step = data.step
     this.width = data.width
     this.n = pts.length
@@ -598,6 +600,20 @@ export const PALETTES = [
   // THE DRUM: violet, pale blue-white chevrons
   { glass: V3(0.026, 0.016, 0.052), grid: V3(0.15, 0.08, 0.3), sheen: V3(0.05, 0.03, 0.1), edge: V3(0.85, 0.35, 1.9), inner: V3(0.5, 0.2, 1.1),
     chev: V3(1.1, 1.2, 1.7), ring: V3(0.85, 0.4, 1.9), strip: V3(0.35, 0.9, 1.8), dots: V3(0.9, 0.4, 1.8), rail: V3(0.5, 0.2, 1.1), railTop: V3(0.9, 0.45, 1.9) },
+  // the NOVA CUP (space): starlit glass in ice white and blue, then aurora green, then solar gold on black
+  { glass: V3(0.012, 0.018, 0.04), grid: V3(0.1, 0.16, 0.3), sheen: V3(0.03, 0.04, 0.09), edge: V3(1.3, 1.6, 2.0), inner: V3(0.5, 0.7, 1.2),
+    chev: V3(0.4, 1.0, 2.0), ring: V3(1.2, 1.5, 2.0), strip: V3(0.5, 0.8, 2.0), dots: V3(1.4, 1.6, 2.0), rail: V3(0.45, 0.6, 1.0), railTop: V3(1.2, 1.5, 2.0) },
+  { glass: V3(0.008, 0.03, 0.03), grid: V3(0.06, 0.25, 0.2), sheen: V3(0.02, 0.07, 0.06), edge: V3(0.25, 1.9, 1.0), inner: V3(0.15, 1.0, 0.7),
+    chev: V3(1.4, 0.4, 1.8), ring: V3(0.3, 1.9, 1.2), strip: V3(0.3, 1.6, 1.0), dots: V3(1.2, 0.5, 1.8), rail: V3(0.1, 0.8, 0.5), railTop: V3(0.3, 1.9, 1.1) },
+  { glass: V3(0.02, 0.016, 0.01), grid: V3(0.25, 0.18, 0.06), sheen: V3(0.07, 0.05, 0.02), edge: V3(2.0, 1.4, 0.3), inner: V3(1.1, 0.7, 0.15),
+    chev: V3(1.6, 1.6, 1.8), ring: V3(2.0, 1.3, 0.3), strip: V3(1.8, 1.0, 0.2), dots: V3(1.9, 1.5, 0.6), rail: V3(0.9, 0.55, 0.1), railTop: V3(2.0, 1.4, 0.3) },
+  // the DUST CUP (desert): sun-baked red, burnt orange and hot teal
+  { glass: V3(0.05, 0.014, 0.01), grid: V3(0.3, 0.08, 0.04), sheen: V3(0.09, 0.03, 0.02), edge: V3(2.0, 0.45, 0.15), inner: V3(1.2, 0.3, 0.1),
+    chev: V3(0.2, 1.6, 1.6), ring: V3(2.0, 0.6, 0.2), strip: V3(1.9, 0.9, 0.2), dots: V3(0.3, 1.5, 1.5), rail: V3(0.9, 0.2, 0.05), railTop: V3(2.0, 0.5, 0.15) },
+  { glass: V3(0.05, 0.03, 0.01), grid: V3(0.3, 0.17, 0.05), sheen: V3(0.09, 0.05, 0.02), edge: V3(2.0, 0.9, 0.2), inner: V3(1.2, 0.55, 0.1),
+    chev: V3(1.9, 0.3, 0.3), ring: V3(2.0, 0.9, 0.25), strip: V3(1.9, 0.5, 0.15), dots: V3(1.9, 0.9, 0.3), rail: V3(0.9, 0.4, 0.05), railTop: V3(2.0, 0.9, 0.2) },
+  { glass: V3(0.01, 0.035, 0.035), grid: V3(0.05, 0.25, 0.25), sheen: V3(0.02, 0.08, 0.08), edge: V3(0.2, 1.9, 1.7), inner: V3(0.1, 1.0, 0.9),
+    chev: V3(2.0, 0.6, 0.2), ring: V3(0.25, 1.9, 1.7), strip: V3(2.0, 0.7, 0.2), dots: V3(0.3, 1.8, 1.6), rail: V3(0.1, 0.8, 0.75), railTop: V3(0.2, 1.9, 1.7) },
 ]
 
 const ROAD_F = /* glsl */`

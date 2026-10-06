@@ -12,7 +12,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { Track } from './track.js'
-import { City } from './city.js'
+import { makeEnvironment, applyLook } from './environments.js'
+import { renderHeroes } from './heroes.js'      // [environments] the worlds round the courses
 import { shared } from './look.js'
 import { PILOTS, RIVALS, RIVAL_ACCENTS, loadMachines, loadEntityMachine, neonEnvironment, Fleet, Showroom } from './machines.js'
 import { validate as validateMachine, hex as hexColor } from './entity_rules.js'
@@ -26,7 +27,7 @@ import { boardTexture } from './boards.js'
 import { Online, TPS, SHOW } from './online.js'
 import { Font, Overlay } from './ui.js'
 import { Hud } from './hud.js'
-import { Menus, LAPS } from './menus.js'
+import { Menus, LAPS, CUPS } from './menus.js'
 import { Audio } from './audio.js'
 import { warmUp, warmSteps } from './warmup.js'
 
@@ -71,8 +72,9 @@ export default async function start(p0) {
     return t
   }
   const rawBitmap = path => new THREE.ImageBitmapLoader().setOptions({ imageOrientation: 'none', premultiplyAlpha: 'none' }).loadAsync(p0.asset(path))
-  const [track1, track2, track3, fontMeta, fontFill, fontLine] = await Promise.all([
+  const [track1, track2, track3, fontMeta, fontFill, fontLine, thinMeta, thinFill, thinLine] = await Promise.all([
     json('assets/track1.json'), json('assets/track2.json'), json('assets/track3.json'), json('assets/ui/font.json'), rawBitmap('assets/ui/font_fill.png'), rawBitmap('assets/ui/font_line.png'),
+    json('assets/ui/font_thin.json'), rawBitmap('assets/ui/font_thin_fill.png'), rawBitmap('assets/ui/font_thin_line.png'),
   ])
   const pictureNames = ['logo', 'icon_gp', 'icon_ta']
   const pictures = Object.fromEntries(await Promise.all(pictureNames.map(async n => [n, await texture(`assets/ui/${n}.jpg`)])))
@@ -119,11 +121,17 @@ export default async function start(p0) {
   const entityHint = p0.entities?.kind && !ownMachine ? (p0.entities.hint || 'Ask your AI agent: make me a machine for zer0-g (Project 0)') : ''
 
   // ---- the world
-  const courses = [track1, track2, track3].map(d => new Track(d).buildLine())
+  // the first cup's three courses, then the other cups' (track4 to track9) when they are there
+  const extraTracks = (await Promise.all([4, 5, 6, 7, 8, 9].map(n => json(`assets/track${n}.json`).catch(() => null))))
+  const trackData = [track1, track2, track3]
+  for (const d of extraTracks) { if (!d) break; trackData.push(d) }
+  const courses = trackData.map(d => new Track(d).buildLine())
   let track = courses[0]
   for (const t of courses) { t.build(); t.group.visible = false; scene.add(t.group) }
   track.group.visible = true
-  const cities = courses.map(t => new City(lot, t, pictures, random))
+  // [environments] each course's world: its track data's env ('city', 'space', 'desert'; p0.debugEnv overrides all)
+  const envOf = k => p0.debugEnv || trackData[k]?.env || 'city'
+  const cities = courses.map((t, k) => makeEnvironment(envOf(k), lot, t, pictures, random))
   for (const c of cities) { c.group.visible = false; scene.add(c.group) }
   let city = cities[0]
   city.group.visible = true
@@ -146,10 +154,12 @@ export default async function start(p0) {
   const fleet = new Fleet(models, fleetDefs, env)
   scene.add(fleet.group)
   const cams = new Cameras(camera, track, lot)
+  cams.world = city                 // what stands in the lot (the director keeps its cameras out of it)
 
   // ---- screen
   const overlay = new Overlay(p0)
   const font = new Font(fontFill, fontLine, fontMeta)
+  const thin = new Font(thinFill, thinLine, thinMeta)      // the lighter weight, for the menus' labels and small text
   const audio = new Audio(p0)
   const hud = new Hud(overlay, font, track, portraits)
   const screen = new ScreenFx(overlay)
@@ -198,7 +208,9 @@ export default async function start(p0) {
     courses.forEach((t, k) => { t.group.visible = k === course })
     city = cities[course]
     cities.forEach((c, k) => { c.group.visible = k === course })
+    applyLook(city.look, { sun, bloom, scene })        // [environments] its fog, light and bloom
     cams.track = track
+    cams.world = city
     hud.track = track
     hud.mapPts = null
     for (let i = 0; i < track.mines.length; i++) track.setMine(i, true)
@@ -322,7 +334,7 @@ export default async function start(p0) {
           }
         }
         if (stack === 2) hud.note('DOUBLE NITRO!', 1, 'pink')
-        else if (stack >= 3) { hud.say('MEGA NITRO', 1.1, 'pink'); fx.ring(tail, f.f, 0xffffff, 1.4 * U, 0.5) }
+        else if (stack >= 3) { hud.note('MEGA NITRO!', 1.1, 'gold'); fx.ring(tail, f.f, 0xffffff, 1.4 * U, 0.5) }
       }
       else if (near(r) > 0.3) audio.sfx('boost', { volume: near(r) * 0.5, gap: 0.3 })
     } else if (kind === 'dash') {
@@ -699,7 +711,11 @@ export default async function start(p0) {
   /** The cup starts on its first course (the field kept for all three); Time Attack at once. (An online race starts
    * from its lobby: see the online hooks below.) */
   function startRace(cfg) {
-    if (cfg.mode === 'gp') cfg = { ...cfg, course: 0, cup: { k: 0, defs: fieldDefs({ machine: cfg.machine }), points: {}, total: 0, all: true } }
+    if (cfg.mode === 'gp') {
+      // the cup the chosen course belongs to, from its first course
+      const def = CUPS.find(c => c.courses.includes(cfg.course) && c.courses.every(k => k < courses.length)) ?? CUPS[0]
+      cfg = { ...cfg, course: def.courses[0], cup: { k: 0, index: CUPS.indexOf(def), name: def.name, courses: def.courses, defs: fieldDefs({ machine: cfg.machine }), points: {}, total: 0, all: true } }
+    } else cfg = { ...cfg, cup: null }
     startLocal(cfg)
   }
 
@@ -723,7 +739,7 @@ export default async function start(p0) {
     const now = racePoints()
     for (const name in now) cup.points[name] = (cup.points[name] ?? 0) + now[name]
     cup.k++
-    startLocal({ ...config, course: cup.k })
+    startLocal({ ...config, course: cup.courses[cup.k] })
   }
 
   /** The field is set with you in it: everyone's race starts on the session's clock (the machines the others
@@ -762,7 +778,7 @@ export default async function start(p0) {
     launchPress = -99
     menus.hideAll()
     hud.show(true)
-    const what = cfg.cup ? `ZER0-G CUP  RACE ${cfg.cup.k + 1}/3` : cfg.online ? 'ONLINE RACE' : MODE_NAME[cfg.mode]
+    const what = cfg.cup ? `${cfg.cup.name}  RACE ${cfg.cup.k + 1}/3` : cfg.online ? 'ONLINE RACE' : MODE_NAME[cfg.mode]
     hud.say(track.name, 3.6, 'cyan', `${what} · ${cfg.mode === 'ta' ? 'ALONE' : CLASSES[cfg.cls].name} · ${race.laps} LAPS`)
     audio.stopMusic()
     audio.voice('ready')
@@ -791,7 +807,8 @@ export default async function start(p0) {
       if (me.finished && me.finishTime > 0) cup.total += me.finishTime; else cup.all = false
       if (cup.k === 2) {
         if (cupTable()[0][0] === me.name) p0.win()
-        if (cup.all) p0.score(Math.round(cup.total * 1000))
+        // the week's table is the ZER0-G Cup's (one table: the other cups' times would not compare)
+        if (cup.all && cup.index === 0) p0.score(Math.round(cup.total * 1000))
       }
     }
     hud.show(false)
@@ -806,14 +823,18 @@ export default async function start(p0) {
     me, record: resultsRecord, online: !!config.online,
     standings: race.ranked.map(r => ({ name: r.name, finished: r.finished, retired: r.retired, time: r.finishTime, me: r === me, human: r.human })),
     cup: config.cup ? {
-      k: config.cup.k, last: config.cup.k === 2, total: config.cup.all ? config.cup.total : null, next: config.cup.k < 2 ? courses[config.cup.k + 1].name : null,
+      k: config.cup.k, last: config.cup.k === 2, total: config.cup.all ? config.cup.total : null, next: config.cup.k < 2 ? courses[config.cup.courses[config.cup.k + 1]].name : null, name: config.cup.name, weekly: config.cup.index === 0,
       table: cupTable().map(([name, pts]) => ({ name, pts, me: name === me.name })),
+      // every racer's cup points before this race and what this one adds (the standings screen animates them)
+      rows: (() => { const now = racePoints(); return race.racers.map(r => ({ name: r.name, face: r.face, accent: r.accent, human: r.human, me: r === me, before: config.cup.points[r.name] ?? 0, add: now[r.name] ?? 0 })) })(),
+      all: config.cup.all,
     } : null,
   })
   p0.on('table', top => menus?.setTable(top))
 
   menus = new Menus({
-    overlay, font, logo: pictures.logo, icons: [pictures.icon_gp, pictures.icon_gp, pictures.icon_ta], portraits, showroom, audio, tracks: courses,
+    faces: portraits,
+    overlay, font, thin, logo: pictures.logo, icons: [pictures.icon_gp, null, pictures.icon_ta], portraits, showroom, audio, tracks: courses,
     onStart: cfg => startRace(cfg),
     onNext: () => nextCupRace(),
     onLobby: () => backToLobby(),
@@ -854,6 +875,8 @@ export default async function start(p0) {
   menus.setThumbs(await showroom.thumbnails(renderer))
   showroom.show(0)
   lite = slowest > 400                     // a software renderer takes seconds; a GPU's first compile of the road, up to ~200 ms
+  // the course cards' pictures: each course's signature stretch on its own
+  menus.setHeroes(renderHeroes(renderer, scene, courses, { bloom: !lite }))
   await warmSteps([
     ['bloom', () => { composer.setSize(64, 36); composer.render(0.016); composer.setSize(p0.width, p0.height) }],
     ['overlay', () => { hud.show(true); hud.update(DT, race, race.racers[0]); overlay.render(renderer); hud.show(false) }],
@@ -880,7 +903,7 @@ export default async function start(p0) {
   }
 
   // the local test page can look inside (never set in the game)
-  p0.debugHooks?.({ scene, composer, renderer, camera, cities, courses, fleet, fx, overlay, goLite: why => goLite(why), get lite() { return lite }, get race() { return race }, get me() { return me }, menus, online, cams })
+  p0.debugHooks?.({ heroes: views => menus.setHeroes(renderHeroes(renderer, scene, courses, { bloom: !lite, views })), scene, composer, renderer, camera, cities, courses, fleet, fx, overlay, goLite: why => goLite(why), get lite() { return lite }, get race() { return race }, get me() { return me }, menus, online, cams })
 
   // ---- start: the title music if sound is allowed already, else wait for a key
   state = 'waiting'
@@ -897,6 +920,7 @@ export default async function start(p0) {
     dt = Math.min(dt, 0.1)
     stateT += dt
     shared.uTime.value += dt
+    shared.uPx.value = composer.renderTarget1.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))
     frames++
     if (state === 'waiting') {
       // sound already allowed: the intro starts on its own
