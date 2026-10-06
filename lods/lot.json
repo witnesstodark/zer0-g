@@ -1,0 +1,24 @@
+{
+ "materials": {
+  "Track": {
+   "surface": "track.glsl",
+   "glow": 1.4
+  },
+  "City": {
+   "surface": "city.glsl",
+   "glow": 1.2
+  },
+  "Screens": {
+   "surface": "screens.glsl",
+   "glow": 0.8,
+   "textures": {
+    "board": "board.png"
+   }
+  },
+  "Machines": {
+   "surface": "machines.glsl",
+   "glow": 1.2
+  }
+ },
+ "script": "build.js"
+}

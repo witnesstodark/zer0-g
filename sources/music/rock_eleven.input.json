@@ -1,0 +1,6 @@
+{
+ "prompt": "Original instrumental for a futuristic anti-gravity racing game: high-octane hard rock and speed metal at 165 BPM. A screaming, catchy, heroic lead guitar melody, fast palm-muted riffs, double-kick drums, a pumping bass, a crazy guitar solo with whammy dives in the middle, then a key change into a huge final chorus. Pure adrenaline, the energy of late-1990s console racing music with modern production. No vocals, no spoken words.",
+ "music_length_ms": 120000,
+ "force_instrumental": true,
+ "output_format": "mp3_44100_192"
+}

@@ -1,0 +1,44 @@
+[
+ {
+  "id": "machine_volt",
+  "name": "Volt Falcon",
+  "variants": {
+   "A": "Original design for an anti-gravity arcade racing game (not based on any existing game). A sleek wedge-shaped hover racer in cobalt blue and white with cyan glowing seams, a long pointed nose, two swept-back side pods ending in big round glowing thrusters, a small bubble canopy, short delta fins. No wheels: it hovers. Stylized clean hard-surface model, glossy painted panels with thin glowing neon seams, Tron and Ready Player One cyberpunk flavour. Isolated on a pure white background, the whole machine in frame with margin, three-quarter front view from slightly above, soft even studio light, no text, no logos, no numbers, no driver visible, no shadow clutter."
+  }
+ },
+ {
+  "id": "machine_nova",
+  "name": "Red Nova",
+  "variants": {
+   "A": "Original design for an anti-gravity arcade racing game (not based on any existing game). A long needle-nosed hover racer in crimson and black with hot orange glowing seams, one huge rear turbine thruster, slim canard wings near the nose, a low narrow canopy. No wheels: it hovers. Stylized clean hard-surface model, glossy painted panels with thin glowing neon seams, Tron and Ready Player One cyberpunk flavour. Isolated on a pure white background, the whole machine in frame with margin, three-quarter front view from slightly above, soft even studio light, no text, no logos, no numbers, no driver visible, no shadow clutter."
+  }
+ },
+ {
+  "id": "machine_oracle",
+  "name": "Gold Oracle",
+  "variants": {
+   "A": "Original design for an anti-gravity arcade racing game (not based on any existing game). A broad flat hover racer shaped like a manta ray, in gold and charcoal with amber glowing seams, four small rear thrusters in a row, a wide panoramic canopy. No wheels: it hovers. Stylized clean hard-surface model, glossy painted panels with thin glowing neon seams, Tron and Ready Player One cyberpunk flavour. Isolated on a pure white background, the whole machine in frame with margin, three-quarter front view from slightly above, soft even studio light, no text, no logos, no numbers, no driver visible, no shadow clutter."
+  }
+ },
+ {
+  "id": "machine_gecko",
+  "name": "Iron Gecko",
+  "variants": {
+   "A": "Original design for an anti-gravity arcade racing game (not based on any existing game). A bulky armoured hover racer in emerald green and gunmetal with lime glowing seams, twin booms on each side, chunky bumpers, three big rear exhausts. No wheels: it hovers. Stylized clean hard-surface model, glossy painted panels with thin glowing neon seams, Tron and Ready Player One cyberpunk flavour. Isolated on a pure white background, the whole machine in frame with margin, three-quarter front view from slightly above, soft even studio light, no text, no logos, no numbers, no driver visible, no shadow clutter."
+  }
+ },
+ {
+  "id": "machine_lune",
+  "name": "Phantom Lune",
+  "variants": {
+   "A": "Original design for an anti-gravity arcade racing game (not based on any existing game). A slender elegant hover racer in pearl white and hot pink with magenta glowing seams, curved crescent-shaped side wings, twin slim rear thrusters, a teardrop canopy. No wheels: it hovers. Stylized clean hard-surface model, glossy painted panels with thin glowing neon seams, Tron and Ready Player One cyberpunk flavour. Isolated on a pure white background, the whole machine in frame with margin, three-quarter front view from slightly above, soft even studio light, no text, no logos, no numbers, no driver visible, no shadow clutter."
+  }
+ },
+ {
+  "id": "machine_wolf",
+  "name": "Night Wolf",
+  "variants": {
+   "A": "Original design for an anti-gravity arcade racing game (not based on any existing game). An aggressive angular stealth hover racer in matte black and violet with purple glowing seams, forward-swept blade fins, three thrusters in a triangle, a tinted canopy. No wheels: it hovers. Stylized clean hard-surface model, glossy painted panels with thin glowing neon seams, Tron and Ready Player One cyberpunk flavour. Isolated on a pure white background, the whole machine in frame with margin, three-quarter front view from slightly above, soft even studio light, no text, no logos, no numbers, no driver visible, no shadow clutter."
+  }
+ }
+]

@@ -1,0 +1,6 @@
+{
+ "prompt": "Original instrumental menu music for a neon cyberpunk anti-gravity racing game: cool, confident retro synthwave at 110 BPM, warm analog pads, a gated drum groove, a catchy bright synth melody, a little guitar shimmer, builds anticipation for a race. Loopable, no vocals.",
+ "music_length_ms": 90000,
+ "force_instrumental": true,
+ "output_format": "mp3_44100_192"
+}

@@ -1,0 +1,30 @@
+[
+ {
+  "id": "art_race",
+  "name": "art_race",
+  "variants": {
+   "A": "A pack of sleek wheelless anti-gravity racing machines exploding out of a neon city canyon towards the viewer, thruster flames, sparks, speed lines, one machine banking hard in the foreground. Late-1980s and 1990s Japanese OVA anime key art, hand-painted cels, heavy black shadow shapes, thick confident ink lines, extreme perspective, wild energy, saturated neon on dark, film grain. Original characters and machines, not based on anything existing. No text, no letters, no logo."
+  }
+ },
+ {
+  "id": "art_cup",
+  "name": "art_cup",
+  "variants": {
+   "A": "A giant chrome trophy cup with neon cyan and magenta light glowing on a podium, held up by a grinning racer in a battered racing suit, confetti and searchlights, a roaring crowd of silhouettes. Late-1980s and 1990s Japanese OVA anime key art, hand-painted cels, heavy black shadow shapes, thick confident ink lines, extreme perspective, wild energy, saturated neon on dark, film grain. Original characters and machines, not based on anything existing. No text, no letters, no logo."
+  }
+ },
+ {
+  "id": "art_faceoff",
+  "name": "art_faceoff",
+  "variants": {
+   "A": "Two rival racers face to face in extreme close-up, one with a cracked cobalt visor and a scar, one with a demon mask, sweat and sparks between them, split by a diagonal neon line, intense stare-down. Late-1980s and 1990s Japanese OVA anime key art, hand-painted cels, heavy black shadow shapes, thick confident ink lines, extreme perspective, wild energy, saturated neon on dark, film grain. Original characters and machines, not based on anything existing. No text, no letters, no logo."
+  }
+ },
+ {
+  "id": "art_volt",
+  "name": "art_volt",
+  "variants": {
+   "A": "A cool cyberpunk punk girl with a magenta undercut drinking from a matte black energy drink can with a cyan lightning mark, leaning on a hover racing machine at night, rain, neon reflections. Late-1980s and 1990s Japanese OVA anime key art, hand-painted cels, heavy black shadow shapes, thick confident ink lines, extreme perspective, wild energy, saturated neon on dark, film grain. Original characters and machines, not based on anything existing. No text, no letters, no logo."
+  }
+ }
+]

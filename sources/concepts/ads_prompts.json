@@ -1,0 +1,37 @@
+[
+ {
+  "id": "ad_league",
+  "name": "ad_league",
+  "variants": {
+   "A": "Billboard for the ZERO-G GRAND PRIX, an underground hover racing league: a battered matte-black racing machine with neon underglow tearing through rain-soaked neon streets, the words ZERO-G GRAND PRIX in bold condensed letters and small text TONIGHT IN NEON CITY. Mature, gritty, cinematic cyberpunk, dark city at night, rain, film grain, original brand, believable real advertising design. The ad fills the whole image edge to edge, flat, no frame, no wall, no perspective."
+  }
+ },
+ {
+  "id": "ad_chrome",
+  "name": "ad_chrome",
+  "variants": {
+   "A": "Billboard for a cyberware clinic called CHROMEHAUS: a close-up of a sleek chrome prosthetic hand with glowing cyan nerve lines, the words CHROMEHAUS and UPGRADE YOUR NERVES. Cold clinical light, no blood. Mature, gritty, cinematic cyberpunk, dark city at night, rain, film grain, original brand, believable real advertising design. The ad fills the whole image edge to edge, flat, no frame, no wall, no perspective."
+  }
+ },
+ {
+  "id": "ad_volt",
+  "name": "ad_volt",
+  "variants": {
+   "A": "Billboard for VOLT energy drink: a matte black can with an electric cyan lightning mark standing on a wet dark street, steam, the words VOLT and STAY WIRED. Mature, gritty, cinematic cyberpunk, dark city at night, rain, film grain, original brand, believable real advertising design. The ad fills the whole image edge to edge, flat, no frame, no wall, no perspective."
+  }
+ },
+ {
+  "id": "ad_omni",
+  "name": "ad_omni",
+  "variants": {
+   "A": "Billboard for a megacorporation called OMNIGRID: a huge serene holographic face of a corporate spokeswoman with a calm unsettling smile, the words OMNIGRID and WE KEEP THE LIGHTS ON. Cold blue and magenta. Mature, gritty, cinematic cyberpunk, dark city at night, rain, film grain, original brand, believable real advertising design. The ad fills the whole image edge to edge, flat, no frame, no wall, no perspective."
+  }
+ },
+ {
+  "id": "ad_oracle",
+  "name": "ad_oracle",
+  "variants": {
+   "A": "Billboard for ORACLE MOTORS: a sleek gold luxury hover car in the rain on a dark city street, neon reflections on its body, the words ORACLE MOTORS and ABOVE THE STREETS. Premium. Mature, gritty, cinematic cyberpunk, dark city at night, rain, film grain, original brand, believable real advertising design. The ad fills the whole image edge to edge, flat, no frame, no wall, no perspective."
+  }
+ }
+]

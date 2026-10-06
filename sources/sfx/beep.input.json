@@ -1,0 +1,7 @@
+{
+ "text": "A single clean electronic race countdown beep, mid pitch, short, arcade style",
+ "duration_seconds": 0.5,
+ "prompt_influence": 0.6,
+ "loop": false,
+ "output_format": "mp3_44100_128"
+}

@@ -1,0 +1,7 @@
+{
+ "text": "A heavy hover craft lands hard on a metal road: a low thud with a short metallic clank",
+ "duration_seconds": 0.7,
+ "prompt_influence": 0.6,
+ "loop": false,
+ "output_format": "mp3_44100_128"
+}

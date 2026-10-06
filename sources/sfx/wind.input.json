@@ -1,0 +1,7 @@
+{
+ "text": "Strong rushing wind at very high speed, roaring air buffeting past a cockpit, seamless loop, no engine",
+ "duration_seconds": 3.0,
+ "prompt_influence": 0.6,
+ "loop": true,
+ "output_format": "mp3_44100_128"
+}

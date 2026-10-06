@@ -1,0 +1,86 @@
+[
+ {
+  "id": "pilot_kai_clean",
+  "name": "Kai Rook",
+  "variants": {
+   "A": {
+    "prompt": "Redraw it as clean, polished character concept art: confident clean line art, smooth cel shading with soft gradients, a limited palette. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (cobalt blue and cyan) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/kai.jpg"
+   },
+   "B": {
+    "prompt": "Redraw it as a clean painted character portrait like the hero select art of a modern AAA arcade game: crisp forms, soft studio rim light, smooth materials, no line clutter. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (cobalt blue and cyan) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/kai.jpg"
+   }
+  }
+ },
+ {
+  "id": "pilot_mara_clean",
+  "name": "Mara Vex",
+  "variants": {
+   "A": {
+    "prompt": "Redraw it as clean, polished character concept art: confident clean line art, smooth cel shading with soft gradients, a limited palette. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (crimson and orange) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/mara.jpg"
+   },
+   "B": {
+    "prompt": "Redraw it as a clean painted character portrait like the hero select art of a modern AAA arcade game: crisp forms, soft studio rim light, smooth materials, no line clutter. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (crimson and orange) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/mara.jpg"
+   }
+  }
+ },
+ {
+  "id": "pilot_zeke_clean",
+  "name": "Dr. Zeke Halloran",
+  "variants": {
+   "A": {
+    "prompt": "Redraw it as clean, polished character concept art: confident clean line art, smooth cel shading with soft gradients, a limited palette. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (gold and amber) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/zeke.jpg"
+   },
+   "B": {
+    "prompt": "Redraw it as a clean painted character portrait like the hero select art of a modern AAA arcade game: crisp forms, soft studio rim light, smooth materials, no line clutter. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (gold and amber) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/zeke.jpg"
+   }
+  }
+ },
+ {
+  "id": "pilot_brakk_clean",
+  "name": "Brakk",
+  "variants": {
+   "A": {
+    "prompt": "Redraw it as clean, polished character concept art: confident clean line art, smooth cel shading with soft gradients, a limited palette. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (emerald and lime) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/brakk.jpg"
+   },
+   "B": {
+    "prompt": "Redraw it as a clean painted character portrait like the hero select art of a modern AAA arcade game: crisp forms, soft studio rim light, smooth materials, no line clutter. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (emerald and lime) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/brakk.jpg"
+   }
+  }
+ },
+ {
+  "id": "pilot_lune_clean",
+  "name": "Lune",
+  "variants": {
+   "A": {
+    "prompt": "Redraw it as clean, polished character concept art: confident clean line art, smooth cel shading with soft gradients, a limited palette. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (white and hot pink) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/lune.jpg"
+   },
+   "B": {
+    "prompt": "Redraw it as a clean painted character portrait like the hero select art of a modern AAA arcade game: crisp forms, soft studio rim light, smooth materials, no line clutter. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (white and hot pink) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/lune.jpg"
+   }
+  }
+ },
+ {
+  "id": "pilot_shade_clean",
+  "name": "Shade",
+  "variants": {
+   "A": {
+    "prompt": "Redraw it as clean, polished character concept art: confident clean line art, smooth cel shading with soft gradients, a limited palette. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (black and violet) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/shade.jpg"
+   },
+   "B": {
+    "prompt": "Redraw it as a clean painted character portrait like the hero select art of a modern AAA arcade game: crisp forms, soft studio rim light, smooth materials, no line clutter. Keep this exact character: the same face, expression, hair, outfit and the same crazy idea. Remove everything around them: no speed lines, no sparks, no lightning, no grid, no glitter, no smoke, no bursts, no busy background, no extra props. Fewer, bigger, cleaner shapes; the character alone, centred bust portrait, on a plain flat very dark background with one soft glow of their colour (black and violet) behind the head. Square image, no text, no letters, no logo, no frame, no border.",
+    "image": "pilots/ref/shade.jpg"
+   }
+  }
+ }
+]

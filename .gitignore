@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+# build outputs
+tools/harness/bundle.js
+tools/harness/lod_bundle.js
+tools/sbx/bundle.js
+# test screenshots and Blender backups
+shots/
+*.blend1

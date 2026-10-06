@@ -1,0 +1,16 @@
+[
+ {
+  "id": "pilot_lune",
+  "name": "Lune",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A pop-idol racer with long white hair with pink tips, a white and hot pink racing outfit, holographic star hair clips, a playful wink. Bust portrait facing the viewer, filling the square image edge to edge: no frame, no border, no screen, no arcade cabinet, no panels, no text, no letters, no logos. Stylized semi-cartoon comic-book look of a 1990s arcade racing game character select portrait, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour."
+  }
+ },
+ {
+  "id": "pilot_shade",
+  "name": "Shade",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A mysterious masked rival in a black hooded racing suit, a smooth black helmet with one thin violet light slit, arms crossed. Bust portrait facing the viewer, filling the square image edge to edge: no frame, no border, no screen, no arcade cabinet, no panels, no text, no letters, no logos. Stylized semi-cartoon comic-book look of a 1990s arcade racing game character select portrait, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour."
+  }
+ }
+]

@@ -1,0 +1,12 @@
+{
+ "entry": "main.js",
+ "name": "ZER0-G",
+ "description": "Anti-gravity racing over Neon City after midnight. Three courses in a cup, one with a pipe you ride round and one with a drum you ride over. Eighteen machines, thirty racers. Arrows to fly, Space to drift, Shift for nitro.",
+ "maxPlayers": 32,
+ "credits": [
+  {
+   "work": "ZER0-G",
+   "by": "Stefan Vaskevich and Mr. Mak, all original"
+  }
+ ]
+}

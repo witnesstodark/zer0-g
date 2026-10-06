@@ -1,0 +1,7 @@
+{
+ "text": "A single long high electronic beep for the start of a race, arcade style, bright",
+ "duration_seconds": 1.0,
+ "prompt_influence": 0.6,
+ "loop": false,
+ "output_format": "mp3_44100_128"
+}

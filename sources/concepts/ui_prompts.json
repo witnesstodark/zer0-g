@@ -1,0 +1,13 @@
+[
+ {"id": "logo", "name": "HYPERLANE logo", "variants": {
+  "A": "Game title logo for an original anti-gravity arcade racing game: the single word HYPERLANE in huge bold italic futuristic letters, chrome steel with a bright cyan neon edge glow and a magenta underglow, motion speed streaks trailing to the left, a thin glowing horizon line under it. Exactly the word HYPERLANE, spelled H-Y-P-E-R-L-A-N-E, nothing else written. Centered on a pure black background, no other objects, 1990s console racing game title screen remade in modern quality.",
+  "B": "Game title logo: the word HYPERLANE in wide heavy italic letters with sharp angular cuts, gradient from white-hot to electric cyan, glowing magenta outline, a chevron arrow integrated into the letter A, speed lines. Exactly the word HYPERLANE, spelled H-Y-P-E-R-L-A-N-E, no other text. Centered on a pure black background, nothing else in the image, retro-futuristic arcade racing title."}},
+ {"id": "bb_volt", "name": "Billboard VOLT", "variants": {
+  "A": "Neon billboard advertisement in a cyberpunk city for a fictional energy drink called VOLT: a glowing cyan can with a lightning bolt, the word VOLT in big neon letters, magenta glow, dark background. Flat poster filling the whole image edge to edge, no frame, no building, no perspective."}},
+ {"id": "bb_gp", "name": "Billboard Grand Prix", "variants": {
+  "A": "Neon poster for a fictional futuristic racing championship: sleek anti-gravity racing ships speeding along a glowing track through a neon city at night, the words HYPERLANE GRAND PRIX in bold italic neon letters at the top. Flat poster filling the whole image edge to edge, no frame, no perspective, cyan magenta and gold palette."}},
+ {"id": "bb_kanji", "name": "Billboard kanji", "variants": {
+  "A": "A tall vertical neon sign of a cyberpunk city: the Japanese characters 超速 stacked vertically in glowing pink and cyan neon tubes, small decorative neon arrows and lines, dark background. Flat sign filling the whole image edge to edge, no building, no perspective, no other text."}},
+ {"id": "bb_oracle", "name": "Billboard Oracle Motors", "variants": {
+  "A": "Neon billboard advertisement for a fictional luxury hover-car maker called ORACLE MOTORS: a golden sleek futuristic hover racing ship in a dramatic three-quarter view with amber light streaks, the words ORACLE MOTORS in elegant gold letters, black background. Flat poster filling the whole image edge to edge, no frame, no perspective."}}
+]

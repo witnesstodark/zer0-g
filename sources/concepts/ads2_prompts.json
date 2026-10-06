@@ -1,0 +1,37 @@
+[
+ {
+  "id": "ad_league2",
+  "name": "ad_league",
+  "variants": {
+   "A": "Advertisement for the ZER0-G GRAND PRIX, an underground anti-gravity racing league: a sleek wheelless matte-black hover racing machine with neon underglow and thrusters streaking through a rain-soaked neon city, the words ZER0-G GRAND PRIX in bold condensed letters, small text TONIGHT IN NEON CITY. Mature, gritty, cinematic cyberpunk advertising design, dark, rain streaks, film grain, original brand. Only the advertisement artwork itself as a flat rectangular image filling the frame: no billboard structure, no frame, no street or buildings around it, no perspective."
+  }
+ },
+ {
+  "id": "ad_chrome2",
+  "name": "ad_chrome",
+  "variants": {
+   "A": "Advertisement for a cyberware clinic called CHROMEHAUS: a sleek chrome prosthetic hand with glowing cyan nerve lines, the words CHROMEHAUS and UPGRADE YOUR NERVES, cold clinical light, no blood. Mature, gritty, cinematic cyberpunk advertising design, dark, rain streaks, film grain, original brand. Only the advertisement artwork itself as a flat rectangular image filling the frame: no billboard structure, no frame, no street or buildings around it, no perspective."
+  }
+ },
+ {
+  "id": "ad_volt2",
+  "name": "ad_volt",
+  "variants": {
+   "A": "Advertisement for VOLT energy drink: a matte black can with an electric cyan lightning mark, steam and rain, the words VOLT and STAY WIRED. Mature, gritty, cinematic cyberpunk advertising design, dark, rain streaks, film grain, original brand. Only the advertisement artwork itself as a flat rectangular image filling the frame: no billboard structure, no frame, no street or buildings around it, no perspective."
+  }
+ },
+ {
+  "id": "ad_omni2",
+  "name": "ad_omni",
+  "variants": {
+   "A": "Advertisement for a megacorporation called OMNIGRID: a huge serene face of a corporate spokeswoman with a calm unsettling smile, scan lines, the words OMNIGRID and WE KEEP THE LIGHTS ON, cold blue and magenta. Mature, gritty, cinematic cyberpunk advertising design, dark, rain streaks, film grain, original brand. Only the advertisement artwork itself as a flat rectangular image filling the frame: no billboard structure, no frame, no street or buildings around it, no perspective."
+  }
+ },
+ {
+  "id": "ad_oracle2",
+  "name": "ad_oracle",
+  "variants": {
+   "A": "Advertisement for ORACLE MOTORS: a sleek gold luxury anti-gravity hover car with no wheels and no grille, smooth futuristic body floating above wet ground with blue thruster glow, the words ORACLE MOTORS and ABOVE THE STREETS, premium. Mature, gritty, cinematic cyberpunk advertising design, dark, rain streaks, film grain, original brand. Only the advertisement artwork itself as a flat rectangular image filling the frame: no billboard structure, no frame, no street or buildings around it, no perspective."
+  }
+ }
+]

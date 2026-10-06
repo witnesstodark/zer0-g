@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>HYPERLANE prod sandbox</title>
+<style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}#hud{position:fixed;left:8px;top:8px;font:12px monospace;background:rgba(255,255,255,.7);white-space:pre;max-width:60vw;z-index:2}</style>
+</head><body><div id="hud"></div>
+<script>
+// A stand-in for the game page around the live sandbox: the real shell, runtime and published bundle from
+// project0.city, with this page answering the shell the way the game page does (init, then listening).
+const q = new URLSearchParams(location.search)
+const lot = Number(q.get('lot') ?? 383), v = q.get('v')
+const base = q.get('base') ?? `https://files.project0.city/x/${lot}/${v}/`
+const frame = document.createElement('iframe')
+frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock')
+frame.setAttribute('allow', 'autoplay')
+frame.src = `https://project0.city/sandbox/shell.html?lot=${lot}&v=${encodeURIComponent(v)}`
+document.body.append(frame)
+window.__log = []
+addEventListener('message', e => {
+  if (e.source !== frame.contentWindow) return
+  const m = e.data
+  if (!m || typeof m !== 'object') return
+  if (m.t === 'shell') {
+    frame.contentWindow.postMessage({
+      t: 'init',
+      lot: { id: lot, size: 44, width: 32, depth: 44, height: 29, name: 'HYPERLANE' },
+      me: { id: 7, name: 'Mr. Mak', color: '#4cc2f0', avatar: null, position: [0, 5, 0] },
+      room: { id: 1, seed: 1234, tick: 0, host: 7, players: [{ id: 7, name: 'Mr. Mak', color: '#4cc2f0', avatar: null }], state: {} },
+      exp: { base, entry: base + 'bundle.js' },
+      camera: [0, 5, 10], volume: 0.5, game: null, table: [],
+    }, '*')
+    window.__log.push('init sent')
+  } else if (m.t === 'started') { window.__started = true; window.__log.push('started'); frame.focus() }
+  else if (m.t === 'hud') document.getElementById('hud').textContent = m.text
+  else if (m.t === 'error') { window.__log.push('error: ' + m.text); console.error('[experience]', m.text) }
+  else if (m.t === 'log') console.log('[experience]', ...(m.args ?? [m.text]))
+  else if (m.t !== 'frame' && m.t !== 'hb') window.__log.push(m.t)
+})
+</script></body></html>

@@ -1,0 +1,17 @@
+[
+ {
+  "id": "logo_zerog",
+  "name": "ZERO-G",
+  "variants": {
+   "A": "Game title logo for an anti-gravity racing game: the word ZERO-G in sleek condensed italic letters, brushed chrome with a thin cyan and magenta neon edge, compact and slim, a single thin speed line under it. Exactly ZERO-G. On a pure black background, nothing else in the image, no other text.",
+   "B": "Game title logo: ZERO-G in sharp narrow futuristic letters with a slashed zero, white-hot chrome to electric cyan gradient, a fine magenta outline, slim and elegant, racing feel. Exactly ZERO-G. On a pure black background, nothing else in the image, no other text."
+  }
+ },
+ {
+  "id": "logo_zerogravity",
+  "name": "ZERO GRAVITY",
+  "variants": {
+   "A": "Game title logo for an anti-gravity racing game: the words ZERO GRAVITY on one line in sleek condensed italic letters, chrome with cyan neon edges, slim and wide-spaced, a thin speed line. Exactly ZERO GRAVITY. On a pure black background, nothing else in the image, no other text."
+  }
+ }
+]

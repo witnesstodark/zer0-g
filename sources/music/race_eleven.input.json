@@ -1,0 +1,6 @@
+{
+ "prompt": "Original instrumental music for an anti-gravity arcade racing game, high-speed neon cyberpunk circuit. Energetic 150 BPM electro-rock: driving distorted electric guitar riffs over a pumping synth bass, tight punchy breakbeat drums, bright arpeggiated synth leads, a memorable heroic hook that returns, short breakdown then a bigger final chorus. Feels like 1990s console racing music remade with modern synthwave production. No vocals, no spoken words.",
+ "music_length_ms": 120000,
+ "force_instrumental": true,
+ "output_format": "mp3_44100_192"
+}

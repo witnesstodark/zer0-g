@@ -1,0 +1,16 @@
+[
+ {
+  "id": "icon_gp",
+  "name": "Grand Prix icon",
+  "variants": {
+   "A": "A clean neon icon for the GRAND PRIX mode of a racing game: a stylized trophy crossed by a waving checkered flag, glowing cyan and magenta neon lines, simple bold shapes, centred on a pure black background. No text, no letters."
+  }
+ },
+ {
+  "id": "icon_ta",
+  "name": "Time Attack icon",
+  "variants": {
+   "A": "A clean neon icon for the TIME ATTACK mode of a racing game: a stylized stopwatch whose hand is a lightning bolt, with speed lines, glowing gold and cyan neon lines, simple bold shapes, centred on a pure black background. No text, no letters."
+  }
+ }
+]

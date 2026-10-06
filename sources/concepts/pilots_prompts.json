@@ -1,0 +1,44 @@
+[
+ {
+  "id": "pilot_kai",
+  "name": "Kai Rook",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A young confident racer with short dark hair and a cocky grin, a cobalt blue racing suit with cyan light stripes, a visor helmet pushed up on his head. Bust portrait facing the viewer, stylized semi-cartoon comic-book look of a 1990s arcade racing game character card, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour, no text, no logos, no letters."
+  }
+ },
+ {
+  "id": "pilot_mara",
+  "name": "Mara Vex",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A fierce woman racer with long red braids, a crimson armoured jacket with orange light strips, one glowing cybernetic eye. Bust portrait facing the viewer, stylized semi-cartoon comic-book look of a 1990s arcade racing game character card, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour, no text, no logos, no letters."
+  }
+ },
+ {
+  "id": "pilot_zeke",
+  "name": "Dr. Zeke Halloran",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). An elderly genius inventor with wild white hair and a big moustache, brass goggles on his forehead, a long coat covered in glowing amber circuit lines. Bust portrait facing the viewer, stylized semi-cartoon comic-book look of a 1990s arcade racing game character card, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour, no text, no logos, no letters."
+  }
+ },
+ {
+  "id": "pilot_brakk",
+  "name": "Brakk",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A big friendly reptilian alien mechanic with green scales, a heavy tool harness, a wide grin with one gold tooth, lime glowing gauges on his shoulder armour. Bust portrait facing the viewer, stylized semi-cartoon comic-book look of a 1990s arcade racing game character card, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour, no text, no logos, no letters."
+  }
+ },
+ {
+  "id": "pilot_lune",
+  "name": "Lune",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A pop-idol racer with long white hair with pink tips, a white and hot pink racing outfit, holographic star hair clips, a playful wink. Bust portrait facing the viewer, stylized semi-cartoon comic-book look of a 1990s arcade racing game character card, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour, no text, no logos, no letters."
+  }
+ },
+ {
+  "id": "pilot_shade",
+  "name": "Shade",
+  "variants": {
+   "A": "Original character for an anti-gravity arcade racing game roster (not based on any existing character). A mysterious masked rival in a black hooded racing suit, a smooth black helmet with one thin violet light slit, arms crossed. Bust portrait facing the viewer, stylized semi-cartoon comic-book look of a 1990s arcade racing game character card, bold colours, strong neon rim light in cyan and magenta, dark background with a glowing perspective grid, Tron and Ready Player One cyberpunk flavour, no text, no logos, no letters."
+  }
+ }
+]

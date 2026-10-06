@@ -1,0 +1,7 @@
+{
+ "text": "A short bright arcade power-up charge sound, a rising synth ping, a nitro cell is full",
+ "duration_seconds": 0.6,
+ "prompt_influence": 0.6,
+ "loop": false,
+ "output_format": "mp3_44100_128"
+}

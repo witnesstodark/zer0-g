@@ -1,0 +1,6 @@
+{
+ "prompt": "Original instrumental title theme for a futuristic racing game: four bars of rising synth and snare build, then a massive distorted guitar riff slams in, a crazy energetic rock groove at 160 BPM with shredding guitar licks, big and triumphant, loopable. No vocals.",
+ "music_length_ms": 90000,
+ "force_instrumental": true,
+ "output_format": "mp3_44100_192"
+}

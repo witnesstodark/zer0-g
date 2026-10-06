@@ -1,0 +1,7 @@
+{
+ "text": "A futuristic racing ship flies past very fast: a short doppler whoosh with a jet whine",
+ "duration_seconds": 1.0,
+ "prompt_influence": 0.6,
+ "loop": false,
+ "output_format": "mp3_44100_128"
+}

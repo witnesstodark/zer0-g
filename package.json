@@ -1,0 +1,21 @@
+{
+  "name": "zer0-g",
+  "private": true,
+  "type": "module",
+  "description": "ZER0-G, an anti-gravity racer for Project 0 lot #383",
+  "scripts": {
+    "serve": "python -m http.server 8383",
+    "harness": "esbuild tools/harness/mock.js --bundle --format=esm --outfile=tools/harness/bundle.js --log-level=warning",
+    "harness:lod": "esbuild tools/harness/lod.js --bundle --format=esm --outfile=tools/harness/lod_bundle.js --log-level=warning",
+    "sandbox": "node tools/sbx/build.mjs",
+    "sim": "node tools/sim.mjs"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.63.0",
+    "three": "^0.186.1"
+  }
+}
