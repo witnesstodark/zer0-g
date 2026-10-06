@@ -50,8 +50,8 @@ const spec = {
 const art = 'A 1990s arcade anti-gravity racing machine: neon, chrome and bold colour, a clear silhouette from behind, ' +
   'hovering (no wheels on the road). Original designs only: no machines, names, logos or lookalikes from other games, ' +
   'films or brands. No weapons, gore, sexual design or hate symbols. Model: one textured machine, nose towards +Z, ' +
-  'resting on y = 0, one to four round exhaust nozzles at the back facing straight back. Picture: a square portrait ' +
-  'of the same machine, three-quarter front, on a dark neon background, no text or frame.'
+  'resting on y = 0, one to four round exhaust nozzles at the back facing straight back. Picture: a portrait of the pilot, ' +
+  'square, head and shoulders, in the style of a 1990s cyberpunk anime character select, on a dark neon background, no text or frame.'
 const rules = {
   game: GAME,
   kind: 'machine',
@@ -66,14 +66,14 @@ const rules = {
 const table = rows => rows.map(r => `| ${r.join(' | ')} |`).join('\n')
 const skill = `# Making a machine for ZER0-G
 
-ZER0-G is an anti-gravity Grand Prix in lot 383 of Project 0: thirty machines on one track, three courses (a
-neon city with a loop and a spiral, a pipe you ride all the way round, a drum you ride on the outside), drift,
+ZER0-G is an anti-gravity Grand Prix in lot 383 of Project 0: thirty machines on one track, three cups of three
+courses (Neon City with its loop, pipe and drum, deep space and a red desert with towers of turns), drift,
 nitro, jumps and online races with whoever is in the lot. It is a love letter to the arcade racers of the
 1990s, with its own machines, pilots, courses and music.
 
 A player brings **one machine** of their own. You make it for them: its data in \`entity.json\`, a **3D model**
 and a **picture**. In the game it comes first on the machine select, marked YOURS, and races in every mode: the
-ZER0-G Cup, Time Attack and online races, where the others in the lot see it too. Its thrusters burn in its own
+three cups, Time Attack and online races, where the others in the lot see it too. Its thrusters burn in its own
 flame colour, and on a nitro its own particles fly out of them.
 
 ## 1. entity.json
@@ -126,8 +126,10 @@ They are drawn in the machine's \`flame\` colour.
 
 ## 3. picture.png
 
-A square PNG, 512 to 1,024 px and at most 512 KB (a 256-colour PNG keeps a 1,024 px picture well under it), of
-the same machine, three-quarter view, on a dark neon background, no text and no frame. It is the machine's portrait in the race standings and on the select screen.
+A square PNG, 512 to 1,024 px and at most 512 KB (a 256-colour PNG keeps a 1,024 px picture well under it): the
+**pilot's portrait**, head and shoulders, drawn like the game's own pilots (1990s cyberpunk anime: bold ink lines,
+cel shading, neon rim light) on a dark neon background, no text and no frame. It is shown beside the machine on the
+select screen and in the race standings, as every pilot's is; the machine itself is drawn from model.glb.
 
 ## 4. Art direction
 
@@ -145,7 +147,7 @@ the same machine, three-quarter view, on a dark neon background, no text and no 
 2. Draw a concept: the machine three-quarter front on a plain light background, the whole silhouette in view.
 3. Turn it into a mesh with an image-to-3D model, then bring it under 15,000 triangles and 1,024 px textures.
    Check the nose points to +Z, that it sits on y = 0, and that the nozzles at the back are open and face back.
-4. Render or crop the picture.
+4. Draw the pilot's portrait (the pilot named in entity.json, in the machine's colours).
 5. Write entity.json and check it locally with the game's own rules: \`import { validate } from './rules.js'\`
    (the same file the server runs) should give \`ok: true\` and at most ${BUDGET} points.
 6. Validate it on the server (free), then send it. The player sees it the next time they open ZER0-G.

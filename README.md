@@ -29,8 +29,8 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 | Up or W | accelerate |
 | Left / Right or A / D | steer |
 | Down or S | brake (in the air: nose down) |
-| Space + steering | drift; let go of Space for a turbo |
-| Shift | nitro: a cell per press; hold it to burn another cell every second (DOUBLE, then MEGA NITRO) |
+| Space + steering | drift: steering moves its angle (on through straight to the other side), letting go of the steering holds it, straight for a moment ends it; let go of Space for a turbo |
+| Shift | nitro: a cell per press; held, it fires whenever a cell is ready and burns another every second. A chain started with two cells in the gauge becomes a DOUBLE, with three or more a MEGA NITRO |
 | Q / E | slide into a turn; double tap for a side attack |
 | F | spin attack |
 | C | near or far camera |

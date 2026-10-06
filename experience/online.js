@@ -7,14 +7,22 @@
 // onto each new one; a collision pushes only your own machine. After the race the lobby opens again.
 //
 // Shared state: 'lobby' { id, owner, co, c, phase: 'open' | 'pick' | 'race', until (tick), start (tick), seed,
-// field } and 'in:<player id>' { n (name), m (machine, or null), e (engine), ok (locked in) }. Messages: 'r' (a
-// player's machine), 'a' (the AI rivals), 'af' (an AI rival finished).
+// field } and 'in:<player id>' { n (name), m (machine, or null), e (engine), ok (locked in), at (tick: the member's
+// game was running then; renewed every few seconds) }. Messages: 'r' (a player's machine), 'a' (the AI rivals),
+// 'af' (an AI rival finished).
+//
+// A lobby never gets stuck on someone who is not there: a member whose game stopped (a tab in the background, the
+// game left without leaving the lobby) goes quiet, and anyone inside then hands the lobby on, ends the pick, ends
+// the race or closes the lobby, as its owner would have.
 
 export const TPS = 20                 // the session's ticks a second
 export const PICK = 15                // seconds to pick a machine
 export const SHOW = 7                 // seconds from the field's setting to GO: the sweep down the grid, 3, 2, 1
 const SEND = 1 / 8                    // seconds between updates of your machine (and the AI's)
 const SET_GAP = 0.6                   // seconds between the same change sent twice (state comes back late)
+const BEAT = 4                        // seconds between a member's "still here"
+const QUIET = 14                      // seconds without one: that member is away
+const RACE_MAX = 240                  // seconds a race may last before its lobby opens again anyway
 
 // flags of a machine's state
 const ALIVE = 1, FINISHED = 2, BOOST = 4, PLATE = 8, DRIFT_R = 16, DRIFT_L = 32, RETIRED = 64, AIR = 128, SPIN = 256
@@ -36,6 +44,7 @@ export class Online {
     this.onRace = null           // (lobby) => void: the field is set with you in it: the race begins
     this.onOpen = null           // (lobby) => void: the lobby is open again (after a race)
     this.onGone = null           // () => void: the lobby you were in is gone
+    this.watching = false        // the ONLINE RACE screen is open here (set by the menus)
     p0.on('tick', n => { this.tick = n; this.tickAt = p0.time })
     p0.on('message', (d, from) => this.receive(d, from))
     // an entry of yours left in the session from before (you left without leaving the lobby): clear it, so you
@@ -85,7 +94,7 @@ export class Online {
     if (this.lobby) return false
     this.keepAlive()
     this.room.set('lobby', { id: Math.floor(this.now) + 1, owner: this.me, co: sel.course ?? 0, c: sel.cls ?? 1, phase: 'open', until: 0, start: 0, seed: Math.floor(Math.random() * 1e9), field: null })
-    this.room.set(`in:${this.me}`, { n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false })
+    this.room.set(`in:${this.me}`, { n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false, at: Math.floor(this.now) })
     return true
   }
 
@@ -94,9 +103,12 @@ export class Online {
     const L = this.lobby
     if (!L || L.phase !== 'open') return false
     this.keepAlive()
-    this.room.set(`in:${this.me}`, { n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false })
+    this.room.set(`in:${this.me}`, { n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false, at: Math.floor(this.now) })
     return true
   }
+
+  /** A member whose game is running (it said so in the last QUIET seconds). */
+  active(id) { const e = this.entry(id); return !!e && (e.at ?? -1e9) > this.now - QUIET * TPS }
 
   /** Leave the lobby (the owner hands it to the next member, or closes it when nobody is left). */
   leave() {
@@ -121,21 +133,31 @@ export class Online {
   pick(machine, engine) {
     const e = this.entry()
     if (!e) return
-    this.room.set(`in:${this.me}`, { ...e, m: machine, e: engine, ok: true })
+    this.room.set(`in:${this.me}`, { ...e, m: machine, e: engine, ok: true, at: Math.floor(this.now) })
   }
 
   /** What the menus show: the lobby, its members, seconds left to pick. */
   view() {
     const L = this.lobby
-    return { lobby: L, members: this.members(), owner: L ? this.name(L.owner) : '', left: L?.phase === 'pick' ? Math.max(0, (L.until - this.now) / TPS) : 0, mine: this.isMember, isOwner: this.isOwner, inside: this.players.length }
+    return {
+      lobby: L, members: this.members(), owner: L ? this.name(L.owner) : '', left: L?.phase === 'pick' ? Math.max(0, (L.until - this.now) / TPS) : 0, mine: this.isMember, isOwner: this.isOwner, inside: this.players.length,
+      // a race on: who is still flying it, and the longest it can keep the lobby closed
+      racing: L?.phase === 'race' && L.field ? this.racing(L).length : 0, raceLeft: L?.phase === 'race' ? Math.max(0, (L.start + RACE_MAX * TPS - this.now) / TPS) : 0,
+    }
   }
 
   // ------------------------------------------------------------ every frame
   update() {
     const L = this.lobby
-    if (this.isMember || this.race) this.keepAlive()
+    // the clock runs while you are in a lobby or a race, and while you look at someone else's (so a lobby left by
+    // a quiet owner can be seen to be stuck and freed)
+    if (this.isMember || this.race || (L && this.watching)) this.keepAlive()
+    // still here: renewed every few seconds while a member
+    const mine = this.entry()
+    if (mine && this.live && (mine.at ?? -1e9) < this.now - BEAT * TPS) this.set(`in:${this.me}`, { ...mine, at: Math.floor(this.now) })
     this.tidy(L)
     if (L && this.isOwner) this.run(L)
+    else if (L) this.unstick(L)
     if (this.race) this.applyDriver()
     // tell the game what changed for you
     const phase = L && this.isMember ? `${L.id}:${L.phase}:${L.start}` : null
@@ -165,24 +187,41 @@ export class Online {
     }
   }
 
+  /** The players of a race still flying it: in the lot, in the lobby, their game running, not finished. */
+  racing(L) {
+    const ids = new Set(this.players)
+    return L.field.filter(f => ids.has(f.pid) && this.active(f.pid) && !this.room.state[`done:${L.start}:${f.pid}`])
+  }
+
   /** The owner runs the lobby: from picking to the race, and back to open when the race is over. */
-  run(L) {
+  run(L, grace = 0) {
     const now = this.now
-    const members = this.members()
+    const members = this.members().filter(m => this.active(m.pid))
     if (L.phase === 'pick') {
       if (!this.live) return
-      if (members.length && (members.every(m => m.ok) || now >= L.until + TPS)) {
+      if (members.length && (members.every(m => m.ok) || now >= L.until + TPS * (1 + grace))) {
         this.set('lobby', { ...L, phase: 'race', start: Math.floor(now + SHOW * TPS), field: members.map(m => ({ pid: m.pid, m: m.m ?? 0, e: m.e ?? 0.5, n: m.n })) })
       }
     } else if (L.phase === 'race' && L.field) {
       // over when every player in it has finished, retired or gone, or after four minutes
-      const ids = new Set(this.players)
-      const racing = L.field.filter(f => ids.has(f.pid) && this.entry(f.pid) && !this.room.state[`done:${L.start}:${f.pid}`])
-      if (!racing.length || now > L.start + 240 * TPS) {
+      if ((!this.racing(L).length && now > L.start + grace * TPS) || now > L.start + (RACE_MAX + grace) * TPS) {
         this.set('lobby', { ...L, phase: 'open', field: null, until: 0 })
         for (const f of L.field) this.set(`done:${L.start}:${f.pid}`, null)
       }
     }
+  }
+
+  /**
+   * Anyone inside keeps a lobby whose owner has gone quiet from getting stuck (everyone works it out the same way
+   * and writes the same thing): it goes to the first member still here, or closes when nobody in it is; a pick or
+   * a race its owner should have ended is ended a few seconds late.
+   */
+  unstick(L) {
+    if (!this.live || this.now - L.id < 6 * TPS) return       // a lobby just made: its members may not have arrived yet
+    const here = this.members().filter(m => this.active(m.pid))
+    if (!here.length) { this.set('lobby', null); return }
+    if (!this.active(L.owner)) { this.set('lobby', { ...L, owner: here[0].pid }); return }
+    this.run(L, 3)
   }
 
   /** You finished or retired: the owner can open the lobby again when everyone has. */

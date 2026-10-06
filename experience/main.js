@@ -173,10 +173,11 @@ export default async function start(p0) {
   const composer = new EffectComposer(renderer, target)
   composer.setPixelRatio(p0.pixelRatio)
   composer.addPass(new RenderPass(scene, camera))
-  const bloom = new UnrealBloomPass(new THREE.Vector2(p0.width / 2, p0.height / 2), 0.85, 0.55, 1.0)
+  const bloom = new UnrealBloomPass(new THREE.Vector2(p0.width / 2, p0.height / 2), 0.68, 0.5, 1.05)
   composer.addPass(bloom)
   composer.addPass(screen.pass)
   composer.addPass(new OutputPass())
+  composer.addPass(screen.sharpen)        // a light sharpening last: the lines and the grid crisper under the glow
   p0.on('resize', () => {
     composer.setPixelRatio(lite ? Math.min(1, p0.pixelRatio) * 0.5 : p0.pixelRatio)
     composer.setSize(p0.width, p0.height)
@@ -334,7 +335,17 @@ export default async function start(p0) {
           }
         }
         if (stack === 2) hud.note('DOUBLE NITRO!', 1, 'pink')
-        else if (stack >= 3) { hud.note('MEGA NITRO!', 1.1, 'gold'); fx.ring(tail, f.f, 0xffffff, 1.4 * U, 0.5) }
+        else if (stack >= 3 && r.megaAt === race.time) {
+          // it just went MEGA: a sonic boom, rings of light blown back one after another, the screen torn white
+          hud.note('MEGA NITRO!', 1.4, 'gold')
+          for (let k = 0; k < 4; k++) fx.ring(tail.clone().addScaledVector(f.f, -k * 0.35 * U), f.f, [0xffffff, 0xff2bd6, 0x29d3ff, 0xffd66b][k], (1.2 + k * 0.5) * U, 0.45 + k * 0.08)
+          fx.ring(f.p, f.u, 0xffffff, 2.4 * U, 0.5)
+          fx.sparks(tail, f.f.clone().multiplyScalar(-1), 0xffffff, 40, 4.5 * U, 0.7)
+          audio.sfx('explode', { volume: 0.45, rate: 0.7 }); audio.sfx('nitro_go', { volume: 1, rate: 0.8 }); audio.voice('boost')
+          cams.shake = 1.4; cams.kick = 32; cams.surge = 2.6
+          screen.flash(0xffffff, 1)
+          megaPulse = 0
+        }
       }
       else if (near(r) > 0.3) audio.sfx('boost', { volume: near(r) * 0.5, gap: 0.3 })
     } else if (kind === 'dash') {
@@ -480,7 +491,7 @@ export default async function start(p0) {
       REAR.copy(POS).addScaledVector(Z, -0.47 * SCALE).addScaledVector(Y, 0.1 * SCALE)
       ROAD.copy(f.p).addScaledVector(f.u, -r.h)
       col.set(r.accent)
-      const power = r.alive ? r.throttleVis * (r.boostT > 0 ? 2.3 + 0.55 * (Math.max(1, r.boostStack) - 1) : r.dashT > 0 || r.turbo > 0 ? 1.7 : 1) : 0
+      const power = r.alive ? r.throttleVis * (r.boostT > 0 ? (r.boostStack >= 3 ? 4.6 : 2.3 + 0.55 * (Math.max(1, r.boostStack) - 1)) : r.dashT > 0 || r.turbo > 0 ? 1.7 : 1) : 0
       fleet.fx.set(i, REAR, Z, f.u, ROAD, power, col, r.alive)
       // the thrusters burn whenever the machine flies (bigger on a plate, huge on a boost), each machine's own colour
       const model = models[r.model]
@@ -556,13 +567,29 @@ export default async function start(p0) {
   const QD = new THREE.Quaternion(), BZ = new THREE.Vector3(), BX = new THREE.Vector3()
   const MARK_COLORS = [new THREE.Color(0.25, 0.9, 1.6), new THREE.Color(0.3, 0.8, 2.2), new THREE.Color(2.2, 0.9, 0.2), new THREE.Color(2.2, 0.35, 1.9)]
 
+  let megaPulse = 0
   /** Speed you can feel: dust and air rushing past the camera, the lines, the edges, the pit's refill. */
   function feelSpeed(dt) {
     const racing = (state === 'race' || state === 'countdown') && me && me.alive && !resultsShown
     const k = racing ? me.sp / me.vmax * (1 + me.flow * 0.3) : 0
     const boost = racing && (me.boostT > 0 || me.dashT > 0 || me.turbo > 0)
-    screen.update(dt, shared.uTime.value, k, boost, !racing ? null : me.boostT > 0 ? 0xff8ae6 : me.dashT > 0 ? 0x8fe9ff : me.turbo > 0 ? DRIFT_COLORS[1] : 0xd8f4ff, racing, racing && me.boostT > 0)
-    if (racing && me.boostT > 0) cams.shake = Math.max(cams.shake, 0.12)
+    const mega = racing && me.boostT > 0 && me.boostStack >= 3
+    const tint = !racing ? null : mega ? [0xffffff, 0xff6fe0, 0x7fe8ff][Math.floor(shared.uTime.value * 12) % 3] : me.boostT > 0 ? 0xff8ae6 : me.dashT > 0 ? 0x8fe9ff : me.turbo > 0 ? DRIFT_COLORS[1] : 0xd8f4ff
+    screen.update(dt, shared.uTime.value, k, boost, tint, racing, racing && me.boostT > 0, mega)
+    if (racing && me.boostT > 0) cams.shake = Math.max(cams.shake, mega ? 0.38 : 0.12)
+    if (mega) {
+      cams.kick = Math.max(cams.kick, 12)
+      // the edges flash in turn, and the tail throws sparks and a ring of light every few metres
+      megaPulse -= dt
+      if (megaPulse <= 0) {
+        megaPulse = 0.22
+        screen.flash([0xff2bd6, 0x29d3ff, 0xffd66b][Math.floor(shared.uTime.value * 4.5) % 3], 0.55)
+        const fr = cams.racerFrame(me)
+        fx.ring(fr.p.clone().addScaledVector(fr.f, -0.3 * U), fr.f, 0xffffff, 0.8 * U, 0.3)
+      }
+      const fr = cams.racerFrame(me)
+      fx.sparks(fr.p.clone().addScaledVector(fr.f, -0.2 * U), fr.f.clone().multiplyScalar(-1), Math.random() < 0.5 ? 0xffffff : 0xff6fe0, 3, 3.5 * U, 0.35)
+    }
     audio.loop('wind', racing && k > 0.55, Math.min(1, (k - 0.45) * 0.9 + (boost ? 0.3 : 0)))
     audio.loop('drift', racing && me.drift !== 0, 0.45)
     if (!racing) return
@@ -921,6 +948,7 @@ export default async function start(p0) {
     stateT += dt
     shared.uTime.value += dt
     shared.uPx.value = composer.renderTarget1.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))
+    screen.setSize(composer.renderTarget1.width, composer.renderTarget1.height)
     frames++
     if (state === 'waiting') {
       // sound already allowed: the intro starts on its own

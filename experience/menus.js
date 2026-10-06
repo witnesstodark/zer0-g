@@ -117,12 +117,14 @@ export class Menus {
     this.icons.forEach(p => p?.show(false))
     this.tiles.forEach(p => p.show(false))
     this.badge?.show(false)
+    if (this.online) this.online.watching = false
     this.screen = null
   }
 
   open(screen, data) {
     if (screen !== 'mode' && screen !== 'online') this.flash = ''
     if (screen !== 'machine') this.onlinePick = false
+    if (this.online) this.online.watching = screen === 'online'
     this.screen = screen
     this.data = data ?? this.data
     this.blinkT = 0
@@ -338,7 +340,7 @@ export class Menus {
     const o = this.online
     if (!o || !['lobby', 'online', 'mode', 'machine'].includes(this.screen)) return ''
     const v = o.view()
-    return `${v.lobby?.id ?? 0}|${v.lobby?.phase}|${v.lobby?.owner}|${Math.ceil(v.left)}|${v.members.map(m => m.pid + ':' + (m.ok ? 1 : 0)).join(',')}|${v.inside}|${v.mine}|${this.onlinePick}|${this.locked}`
+    return `${v.lobby?.id ?? 0}|${v.lobby?.phase}|${v.lobby?.owner}|${Math.ceil(v.left)}|${Math.ceil(v.raceLeft)}|${v.racing}|${v.members.map(m => m.pid + ':' + (m.ok ? 1 : 0)).join(',')}|${v.inside}|${v.mine}|${this.onlinePick}|${this.locked}`
   }
 
   /** The owner started the online race: pick a machine against the clock. */
@@ -642,9 +644,15 @@ export class Menus {
       } else if (L.phase === 'open') {
         f.draw(c, `${v.owner}'S LOBBY`, 640, 262, 24, { color: '#ffffff', align: 'center', skew: 0.12, outline: false })
         t.draw(c, `${this.tracks[L.co ?? 0]?.name ?? ''}  /  ${CLASSES[L.c]?.name ?? ''}  /  ${v.members.length} IN`, 640, 312, 13, { color: C_CYAN, align: 'center', skew: 0, spacing: 0.14, outline: false })
+      } else if (L.phase === 'pick') {
+        f.draw(c, 'THEY ARE PICKING MACHINES', 640, 272, 22, { color: C_GOLD, align: 'center', skew: 0.12, outline: false })
+        t.draw(c, `${v.members.length} IN ${v.owner}'S LOBBY  /  THE RACE STARTS IN A MOMENT`, 640, 322, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
+        t.draw(c, 'ITS LOBBY OPENS AGAIN WHEN THE RACE ENDS', 640, 346, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
       } else {
+        const m = Math.floor(v.raceLeft / 60), sec = String(Math.floor(v.raceLeft % 60)).padStart(2, '0')
         f.draw(c, 'A RACE IS ON', 640, 272, 24, { color: C_GOLD, align: 'center', skew: 0.12, outline: false })
-        t.draw(c, 'ITS LOBBY OPENS AGAIN WHEN IT ENDS', 640, 322, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
+        t.draw(c, `${v.racing} STILL RACING  /  THE LOBBY OPENS AGAIN WHEN THEY FINISH`, 640, 322, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
+        t.draw(c, `AT THE LATEST IN ${m}:${sec}`, 640, 346, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.16, outline: false })
       }
       if (this.flash) t.draw(c, this.flash, 640, 530, 13, { color: '#ff6b7d', align: 'center', skew: 0, spacing: 0.1, outline: false })
       t.draw(c, 'AI RIVALS FILL THE GRID TO 30 MACHINES', 640, 570, 10.5, { color: FAINT, align: 'center', skew: 0, spacing: 0.16, outline: false })

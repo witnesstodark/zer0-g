@@ -16,6 +16,7 @@ export class ScreenFx {
       uLineColor: { value: new THREE.Color(0.75, 0.95, 1.2) },
       uEdge: { value: 0 },
       uEdgeColor: { value: new THREE.Color(1, 0.2, 0.9) },
+      uMega: { value: 0 },
     }
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -23,7 +24,7 @@ export class ScreenFx {
         varying vec2 vUv;
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */`
-        uniform float uTime, uAspect, uLines, uEdge;
+        uniform float uTime, uAspect, uLines, uEdge, uMega;
         uniform vec3 uLineColor, uEdgeColor;
         varying vec2 vUv;
         float hash(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
@@ -43,6 +44,9 @@ export class ScreenFx {
           float dash = smoothstep(0.0, 0.25, seg) * (1.0 - smoothstep(0.55, 1.0, seg));
           float reach = smoothstep(0.62 - 0.32 * uLines, 1.05, r);
           vec3 c = uLineColor * line * dash * reach * on * min(1.0, uLines * 1.4);
+          // a MEGA NITRO: rings rushing out of the middle, a tunnel of light round the picture
+          float ring = 1.0 - smoothstep(0.0, 0.16, abs(fract(log(r + 0.02) * 2.2 - uTime * 3.4) - 0.5) * 2.0 - 0.84);
+          c += mix(vec3(1.0, 0.35, 0.9), vec3(0.35, 0.9, 1.2), 0.5 + 0.5 * sin(uTime * 9.0 + a * 12.566)) * ring * smoothstep(0.45, 1.1, r) * uMega * 0.55;
           // the glow round the edges
           float e = smoothstep(0.55, 1.05, r) * uEdge;
           c += uEdgeColor * e * (0.8 + 0.2 * sin(uTime * 40.0));
@@ -87,8 +91,30 @@ export class ScreenFx {
         }`,
     })
     this.pass.enabled = false
+
+    // a light sharpening of the finished picture (an unsharp mask from the four neighbours)
+    this.sharpen = new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uAmount: { value: 0.22 } },
+      vertexShader: /* glsl */`
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: /* glsl */`
+        uniform sampler2D tDiffuse;
+        uniform vec2 uTexel;
+        uniform float uAmount;
+        varying vec2 vUv;
+        void main() {
+          vec3 c = texture2D(tDiffuse, vUv).rgb;
+          vec3 n = texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb + texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb
+                 + texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb + texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb;
+          gl_FragColor = vec4(clamp(c + (c * 4.0 - n) * uAmount, 0.0, 1.0), 1.0);
+        }`,
+    })
     this.resize()
   }
+
+  /** The sharpening's step: one pixel of the picture it works on (w x h). */
+  setSize(w, h) { this.sharpen.uniforms.uTexel.value.set(1 / Math.max(1, w), 1 / Math.max(1, h)) }
 
   resize() {
     const o = this.overlay
@@ -104,8 +130,10 @@ export class ScreenFx {
   }
 
   /** speedK: speed over top speed; boost: nitro or a plate is pushing; tint: the lines' colour. */
-  update(dt, time, speedK, boost, tint, on = true, nitro = false) {
-    const want = on ? Math.max(0, Math.min(1, (speedK - 0.62) / 0.5)) * 0.75 + (boost ? 0.5 : 0) : 0
+  update(dt, time, speedK, boost, tint, on = true, nitro = false, mega = false) {
+    const want = on ? Math.max(0, Math.min(1, (speedK - 0.62) / 0.5)) * 0.75 + (boost ? 0.5 : 0) + (mega ? 0.35 : 0) : 0
+    this.mega = (this.mega ?? 0) + ((mega ? 1 : 0) - (this.mega ?? 0)) * Math.min(1, dt * (mega ? 8 : 2.5))
+    this.uniforms.uMega.value = this.mega
     this.lines += (want - this.lines) * Math.min(1, dt * (want > this.lines ? 10 : 3))
     this.edge = Math.max(0, this.edge - dt * 1.8)
     const u = this.uniforms
@@ -114,10 +142,11 @@ export class ScreenFx {
     u.uLineColor.value.set(tint ?? 0xbfeaff).multiplyScalar(1.1)
     u.uEdge.value = this.edge
     u.uEdgeColor.value.copy(this.edgeColor)
-    this.mesh.visible = this.lines > 0.01 || this.edge > 0.01
+    this.mesh.visible = this.lines > 0.01 || this.edge > 0.01 || this.mega > 0.01
     this.split = (this.split ?? 0) + ((nitro ? 1 : 0) - (this.split ?? 0)) * Math.min(1, dt * (nitro ? 12 : 4))
-    this.pass.uniforms.uK.value = this.lines * (1 + this.split * 0.6)
-    this.pass.uniforms.uSplit.value = this.split * 0.018
+    this.pass.uniforms.uK.value = this.lines * (1 + this.split * 0.6 + this.mega * 0.9)
+    this.pass.uniforms.uSplit.value = this.split * 0.018 + this.mega * 0.022
     this.pass.enabled = !this.lite && (this.lines > 0.03 || this.split > 0.02)
+    this.sharpen.enabled = !this.lite
   }
 }

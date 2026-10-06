@@ -162,13 +162,20 @@ export class Race {
     }
     inp.spin = inp.sideL = inp.sideR = false
 
-    // ---- nitro: SHIFT burns a cell; pressed again while it burns, or held down (another cell every second),
-    // it burns longer and harder: two cells a double, three or more a MEGA NITRO
-    const held = inp.boostHeld && r.boostT > 0 && this.time - r.boostAt >= 1.0
-    if ((inp.boost || held) && r.nitro >= NITRO_CELL && !r.finished) {
+    // ---- nitro: SHIFT burns a cell. Held down it fires by itself whenever a cell is ready, and while one burns it
+    // burns another every second (pressing again does the same at once). A chain grows hotter only as far as the
+    // cells that were in the gauge when it began: two banked make a DOUBLE, three or more a MEGA NITRO (longer and
+    // faster). Cells gained while it burns only keep it going, so charging and firing one cell at a time never
+    // builds a MEGA
+    const fire = inp.boost || (inp.boostHeld && (r.boostT <= 0 || this.time - r.boostAt >= 1.0))
+    if (fire && r.nitro >= NITRO_CELL && !r.finished) {
+      if (r.boostT <= 0) { r.boostBank = Math.floor(r.nitro / NITRO_CELL); r.boostStack = 0 }
       r.nitro -= NITRO_CELL
-      r.boostStack = r.boostT > 0 ? Math.min(3, r.boostStack + 1) : 1
-      r.boostT = Math.min(5, r.boostT + 1.0 + r.boostG * 0.5)
+      const was = r.boostStack
+      r.boostStack = Math.min(3, r.boostBank ?? 1, r.boostStack + 1)
+      const mega = r.boostStack >= 3
+      r.boostT = Math.min(mega ? 7 : 5, r.boostT + 1.0 + r.boostG * 0.5 + (mega && was < 3 ? 1.6 : 0))
+      if (mega && was < 3) r.megaAt = this.time          // the moment it went MEGA (the game's big show)
       r.boostAt = this.time
       this.events('boost', r, r.boostStack)
     }
@@ -192,16 +199,20 @@ export class Race {
     if (Math.abs(inp.steer) < 0.05 && !r.drift && !air) r.psi -= r.psi * Math.min(1, dt * 1.2)
 
     // ---- the drift: hold SPACE and touch the steering (or lean with Q/E) and the machine hops and slides at
-    // once, even in a gentle bend: the body swings well round while its path bends only a little. Left alone
-    // it arcs gently; steer into the turn to tighten it, the other way to straighten it (it holds until SPACE
-    // is let go). It fills the nitro as it slides, and letting go gives a turbo that grows with how long it
-    // was held (blue, orange, pink)
+    // once, even in a gentle bend: the body swings well round while its path bends only a little. Its angle is
+    // yours to change: steering moves it (into the turn to tighten it, out of it to ease it, on through straight
+    // to slide the other way) and letting go of the steering holds it where it is. Held straight for a moment,
+    // the drift ends. It fills the nitro as it slides, and letting go of SPACE (or straightening out) gives a
+    // turbo that grows with how long it was held (blue, orange, pink)
     r.hop = Math.max(0, r.hop - dt)
     turbo: {
       const dir = Math.abs(inp.steer) > 0.08 ? Math.sign(inp.steer) : Math.abs(r.lean) > 0.3 ? Math.sign(r.lean) : 0
+      const aim = clamp(inp.steer + r.lean * 0.5, -1, 1)
       if (r.drift === 0) {
         if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air) {
           r.drift = dir
+          r.driftSide = dir * 0.4                       // the angle: -1 hard left .. 1 hard right
+          r.driftStraight = 0
           r.driftT = 0
           r.psi += r.drift * 0.02                       // the kick: the tail steps out (the body shows the rest)
           r.hop = 0.14
@@ -211,7 +222,16 @@ export class Race {
       }
       r.driftT += dt
       this.charge(r, (8 + 4 * driftTier(r)) * dt)
-      if (!inp.drift || r.sp < r.vmax * 0.25 || air) {
+      // steering moves the angle: further into the slide up to where it points, or back the other way (easing it,
+      // and on through straight to the other side); letting go (or steering less) holds it where it is
+      if (Math.abs(aim) > 0.08) {
+        const d = aim - r.driftSide
+        if (Math.sign(aim) !== Math.sign(r.driftSide) || Math.abs(aim) > Math.abs(r.driftSide)) r.driftSide += Math.sign(d) * Math.min(Math.abs(d), 3.2 * dt)
+      }
+      // across to the other side: a hop as the tail swings over
+      if (Math.abs(r.driftSide) > 0.15 && Math.sign(r.driftSide) !== r.drift) { r.drift = Math.sign(r.driftSide); r.hop = 0.12; this.events('drift', r) }
+      r.driftStraight = Math.abs(r.driftSide) < 0.15 ? r.driftStraight + dt : 0
+      if (!inp.drift || r.sp < r.vmax * 0.25 || air || r.driftStraight > 0.3) {
         const tier = driftTier(r)
         if (tier && !air) {
           r.turbo = [0, 0.5, 0.8, 1.1][tier]
@@ -224,12 +244,13 @@ export class Race {
         this.events('driftEnd', r)
         break turbo
       }
-      const into = clamp((inp.steer + r.lean * 0.5) * r.drift, -1, 1)
-      // the drift's own turn comes in over a quarter of a second, so starting one never throws you aside
-      turn = r.drift * r.turnRate * (0.12 + 0.6 * into) * Math.min(1, 0.3 + r.driftT / 0.25)
+      // the drift's own turn, from its angle and a touch of the steering now (it comes in over a quarter of a
+      // second, so starting one never throws you aside)
+      turn = r.turnRate * (0.6 * r.driftSide + 0.12 * aim) * Math.min(1, 0.3 + r.driftT / 0.25)
     }
-    // the slide you see: the body swung round past its heading (more when steering into it)
-    r.driftVis += ((r.drift ? r.drift * (0.42 + 0.12 * Math.max(0, inp.steer * r.drift)) : 0) - r.driftVis) * Math.min(1, dt * (r.drift ? 12 : 7))
+    // the slide you see: the body swung round past its heading, by the drift's angle (more when steering into it)
+    const side = r.drift ? clamp(r.driftSide / 0.6, -1, 1) : 0
+    r.driftVis += ((r.drift ? side * (0.42 + 0.12 * Math.max(0, inp.steer * Math.sign(side))) : 0) - r.driftVis) * Math.min(1, dt * (r.drift ? 12 : 7))
     r.turbo = Math.max(0, r.turbo - dt)
     const vs = r.sp * Math.cos(r.phi)
     const stretch = t.curved(idx) ? 1 : 1 / clamp(1 - k * r.x, 0.35, 2.5)
@@ -258,14 +279,14 @@ export class Race {
     const onDash = r.dashT > 0
     let vmax = r.vmax * (r.ai ? r.ai.pace * (r.human ? 1 : r.band ?? 1) : 1)
     const stack = Math.max(1, r.boostStack)
-    if (r.boostT > 0) vmax = vmax * (1.32 + 0.12 * (stack - 1)) + r.boostG * 0.9 * U * V
+    if (r.boostT > 0) vmax = vmax * (stack >= 3 ? 1.64 : 1.32 + 0.12 * (stack - 1)) + r.boostG * 0.9 * U * V
     if (onDash) vmax *= 1.3
     if (r.turbo > 0) vmax *= 1.15
     if (r.energy <= 0) vmax *= 0.97
     vmax *= 1 + 0.25 * r.flow
     if (!air && !r.finished) {
       if (inp.throttle) {
-        const a = r.accel * (1 + 0.3 * r.flow) * Math.max(0.05, 1 - (r.sp / vmax) ** 2) + (r.boostT > 0 ? (7.5 + 3 * (stack - 1)) * U * V : 0)
+        const a = r.accel * (1 + 0.3 * r.flow) * Math.max(0.05, 1 - (r.sp / vmax) ** 2) + (r.boostT > 0 ? (stack >= 3 ? 15 : 7.5 + 3 * (stack - 1)) * U * V : 0)
         if (r.sp < vmax) r.sp = Math.min(vmax, r.sp + a * dt)
       } else r.sp = Math.max(0, r.sp - (0.27 * U * V + r.sp * 0.05) * dt)
       if (inp.brake) r.sp = Math.max(0, r.sp - 5 * U * V * dt)
@@ -392,7 +413,9 @@ export class Race {
       // the heal strips: energy back, fast
       r.inPit = false
       if (r.energy < 100) for (const pit of t.pits) {
-        if (within(t, r.D, pit.s0, pit.s1) && r.x * pit.side > t.width / 2 - 0.5 && r.x * pit.side < t.width / 2 + 0.2) {
+        // on the strip: 0.8 m along its edge, or 1 m down the middle (side 0)
+        const on = pit.side === 0 ? Math.abs(r.x) < 0.55 : r.x * pit.side > t.width / 2 - 0.85 && r.x * pit.side < t.width / 2 + 0.2
+        if (within(t, r.D, pit.s0, pit.s1) && on) {
           r.energy = Math.min(100, r.energy + 38 * dt)
           this.charge(r, 4 * dt)
           r.inPit = true
@@ -459,7 +482,7 @@ export class Race {
     if (r.energy < 45 && !r.finished) {
       for (const pit of t.pits) {
         const d = t.wrapS(pit.s0 - s)
-        if (d < 25 || within(t, r.D, pit.s0, pit.s1 - 1.5)) { xt = pit.side * (t.width / 2 - 0.25); break }
+        if (d < 25 || within(t, r.D, pit.s0, pit.s1 - 1.5)) { xt = pit.side * (t.width / 2 - 0.4); break }
       }
     }
     // the pack stays in reach of the players: rivals far ahead of the best of them ease off, those far behind

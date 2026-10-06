@@ -638,10 +638,12 @@ void main() {
 
   // the surface: dark glass with a hex-ish grid of faint lines
   vec3 col = uGlass;
-  vec2 g = vec2(x * 6.0, s * 6.0);
-  vec2 gf = abs(fract(g) - 0.5);
-  float grid = (1.0 - smoothstep(0.0, 0.06 + d.y * 4.0, min(gf.x, gf.y) - 0.0)) * fade;
-  col += uGrid * grid * 0.35;
+  vec2 g = vec2(x, s) * 5.0;                      // a line every 20 cm, one down the middle and on each edge
+  vec2 gw = fwidth(g);
+  vec2 gd = abs(fract(g + 0.5) - 0.5);            // how far to the nearest line, in cells
+  vec2 l = 1.0 - smoothstep(0.022 - gw * 0.5, 0.022 + gw * 0.7, gd);
+  float grid = max(l.x, l.y) * fade * clamp(1.5 - max(gw.x, gw.y) * 2.0, 0.0, 1.0);
+  col += uGrid * grid * 0.45;
   // a sheen that moves with you: the city lights in the glass
   col += uSheen * (0.5 + 0.5 * sin(s * 0.21 + x * 0.6));
 
@@ -676,15 +678,18 @@ void main() {
     col += vec3(2.4, 1.2, 0.15) * arrow * inside;
     col += vec3(1.6, 0.9, 0.1) * band(px, 0.18, 0.2, aa) * 1.5;
   } else if (kind == 2.0) {
-    // the pit: a magenta strip along one edge, with a ladder of crosses
+    // the pit: a magenta strip 0.8 m wide along one edge, or 1 m wide down the middle of a stretch with open
+    // edges, with a ladder of crosses down it
+    float mid = step(abs(fx), 0.3);
     float side = fx > 0.0 ? 1.0 : -1.0;
-    float px = x * side;
-    float inside = smoothstep(W * 0.5 - 0.45 - aa, W * 0.5 - 0.45, px);
-    vec2 q = vec2(px - (W * 0.5 - 0.23), fract(s * 2.4) - 0.5);
+    float px = mix(x * side - (W * 0.5 - 0.4), x, mid);       // across the strip, from its middle
+    float hw = mix(0.4, 0.5, mid);                             // its half width
+    float inside = 1.0 - smoothstep(hw, hw + aa, abs(px));
+    vec2 q = vec2(px, fract(s * 2.4) - 0.5);
     float plus = max(band(abs(q.x), 0.0, 0.017, aa) * step(abs(q.y), 0.2), band(abs(q.y), 0.0, 0.06, aa) * step(abs(q.x), 0.055));
     col = mix(col, vec3(0.18, 0.0, 0.12), inside * 0.7);
     col += vec3(1.8, 0.2, 1.4) * plus * inside * (0.6 + 0.4 * sin(uTime * 6.0 - s * 3.0));
-    col += vec3(2.0, 0.3, 1.6) * band(px, W * 0.5 - 0.47, W * 0.5 - 0.44, aa);
+    col += vec3(2.0, 0.3, 1.6) * band(abs(px), hw - 0.03, hw, aa);
   } else if (kind == 3.0) {
     // a jump plate: the whole width, red-orange, arrows pointing up the slope
     float arrow = band(fract(s * 6.0 - uTime * 2.0 - abs(x) * 1.8), 0.0, 0.4, 0.06);
