@@ -6,6 +6,9 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+// players' machines come back from Project 0 meshopt-compressed, and a sandbox may not run WebAssembly: meshoptimizer's
+// own pure-JavaScript decoder (MIT) reads them
+import { MeshoptDecoder } from './meshopt_decoder.js'
 import { shared, fogChunk } from './look.js'
 import { U } from './scale.js'
 import { Airflow } from './airflow.js'
@@ -89,7 +92,7 @@ function floats(geo) {
  * to the length of every other machine (0.9 m), its nozzles found as for the others. def: its pilot entry.
  */
 export async function loadEntityMachine(url, def) {
-  const gltf = await new GLTFLoader().loadAsync(url)
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url)
   gltf.scene.updateMatrixWorld(true)
   const geos = [], mats = []
   gltf.scene.traverse(o => {

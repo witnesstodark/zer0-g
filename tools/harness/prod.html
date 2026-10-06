@@ -19,14 +19,17 @@ addEventListener('message', e => {
   const m = e.data
   if (!m || typeof m !== 'object') return
   if (m.t === 'shell') {
-    frame.contentWindow.postMessage({
+    // ?entity=<url of an entity as the server sends it>: this player has one (and the lot takes them)
+    const withEntity = q.get('entity') ? fetch(q.get('entity')).then(r => r.json()).then(d => d.entity ?? d) : Promise.resolve(null)
+    withEntity.then(entity => frame.contentWindow.postMessage({
       t: 'init',
       lot: { id: lot, size: 44, width: 32, depth: 44, height: 29, name: 'HYPERLANE' },
       me: { id: 7, name: 'Mr. Mak', color: '#4cc2f0', avatar: null, position: [0, 5, 0] },
-      room: { id: 1, seed: 1234, tick: 0, host: 7, players: [{ id: 7, name: 'Mr. Mak', color: '#4cc2f0', avatar: null }], state: {} },
+      room: { id: 1, seed: 1234, tick: 0, host: 7, players: [{ id: 7, name: 'Mr. Mak', color: '#4cc2f0', avatar: null, ...(entity ? { entity } : {}) }], state: {} },
       exp: { base, entry: base + 'bundle.js' },
       camera: [0, 5, 10], volume: 0.5, game: null, table: [],
-    }, '*')
+      entityKind: entity ? { game: 'zer0-g', kind: 'machine', title: 'ZER0-G machine', version: 3, budget: 9 } : null,
+    }, '*'))
     window.__log.push('init sent')
   } else if (m.t === 'started') { window.__started = true; window.__log.push('started'); frame.focus() }
   else if (m.t === 'hud') document.getElementById('hud').textContent = m.text

@@ -62,10 +62,10 @@ function sampleMachine(kind, id) {
   const base = location.origin
   const entity = data => ({
     id: `e${id}`, game: 'zer0-g', kind: 'machine', name: data.name, data, version: 1, status: 'live', cost: 8, owner: { uid: `u${id}`, name: `Player ${id}` },
-    model: kind === 'stefan' ? base + '/entity/stefan/model.glb' : base + '/experience/assets/machines/tophat.glb',
+    model: kind === 'served' ? 'https://files.project0.city/entities/383/dea065e31f0e3632ebb34688/model.glb' : kind === 'stefan' ? base + '/entity/stefan/model.glb' : base + '/experience/assets/machines/tophat.glb',
     picture: kind === 'stefan' ? base + '/entity/stefan/picture.png' : base + '/experience/assets/ui/pilot_mak.jpg',
   })
-  if (kind === 'stefan') return fetch(base + '/entity/stefan/entity.json').then(r => r.json()).then(entity)
+  if (kind === 'stefan' || kind === 'served') return fetch(base + '/entity/stefan/entity.json').then(r => r.json()).then(entity)
   return entity({ name: 'TEST HOG', pilot: `PILOT ${id}`, stats: { body: 'C', boost: 'A', grip: 'C' }, weight: 1100, accent: '#ff2bd6', flame: '#ff7ad9', particle: 'snout' })
 }
 const PID = Number(params.get('pid') ?? 0)

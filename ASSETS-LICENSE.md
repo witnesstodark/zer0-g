@@ -28,3 +28,8 @@ under the same license.
 
 `experience/assets/track1.json`, `track2.json` and `track3.json` are written by `tools/track_design.py` and are covered
 by the MIT License with the code.
+
+## Third-party code
+
+`experience/meshopt_decoder.js` is meshoptimizer's reference decoder (Copyright (C) 2016-2026 Arseny Kapoulkine,
+written by Jasper St. Pierre), MIT License, as its header says. three.js is MIT as well.
