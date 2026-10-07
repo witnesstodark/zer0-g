@@ -13,8 +13,8 @@ import { U } from './scale.js'
 export { U }
 export const G_AIR = 11 * U
 // V: round 9's pace, about 150 km/h more at the same engine: every speed and push goes up with it (and the
-// steering a little, so the same turns can be taken)
-export const V = 1.27
+// steering a little, so the same turns can be taken). Round 24 (Stefan: "everything 5% faster"): 1.27 * 1.05
+export const V = 1.27 * 1.05
 const BASE_VMAX = 7 * U * V
 export const KMH = 3.6 * 21 / U     // shown speed: the machines (0.21 m) are about a thirtieth of a real racer
 export const LEN = 0.3 * U          // a machine's length
@@ -90,7 +90,7 @@ export class Racer {
   get s() { return this.D }
   get vmax() { return BASE_VMAX + this.engine * 0.9 * U * V }
   get accel() { return (4.3 - this.engine * 1.7) * U * V }
-  get turnRate() { return 1.9 * 1.12 * (0.82 + 0.36 * this.grip) }
+  get turnRate() { return 1.9 * 1.12 * 1.03 * (0.82 + 0.36 * this.grip) }    // round 24: 3% more with the 5% more speed
   get gripRate() { return 3.5 + 4.5 * this.grip }
   get damageK() { return 1.45 - 0.8 * this.body }
 }

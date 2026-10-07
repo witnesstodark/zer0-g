@@ -39,7 +39,7 @@ for (const [n, at] of [[1, 353], [4, 48]]) {
   const press = run('drift, a press (0.25 s)', t => ({ drift: t > 0.25, steer: t > 0.25 && t < 0.5 ? 1 : 0 }))
   const held = run('drift, held in', t => ({ drift: t > 0.25, steer: t > 0.25 ? 1 : 0 }))
   run('drift, held in 0.3 s, out', t => ({ drift: t > 0.25, steer: t > 0.25 ? (t < 0.55 ? 1 : -1) : 0 }))
-  check(tap.hit < 0 && Math.abs(tap.x) < 1.2, `${track.name}: a drift taken with a tap carries round the bend, no wall in 2.4 s`)
+  check(tap.hit < 0 && Math.abs(tap.x) < 1.35, `${track.name}: a drift taken with a tap carries round the bend, no wall in 2.4 s`)
   check(press.hit < 0, `${track.name}: a drift taken with a short press (0.25 s) stays off the walls too`)
   check(plain.hit >= 0, `${track.name}: plain with no steering slides out to the wall (the bend needs turning)`)
   check(held.hit >= 0 && held.x > 1, `${track.name}: a drift held in turns hard (to the inside wall)`)
