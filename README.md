@@ -14,7 +14,7 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 - **Three machines a race:** hit again with no energy left, or off the course with little left, and your machine blows apart; the spare comes out a couple of seconds later with full energy. The third wreck puts you out.
 - **Drift and nitro:** a drift fills the nitro gauge and gives a turbo when you let go; flying clean at speed builds flow, up to a quarter more top speed.
 - A weekly table of the best cup times, shown on the title screen.
-- **MY MACHINE and the GALLERY** on the main menu: your own machine on its stand, and every player's machine with its pilot (the list is copied at each publish by `tools/gallery_snapshot.mjs`, since the sandbox cannot ask the server for it, and joined by the machines of whoever is in the lot).
+- **MY MACHINE and the GALLERY** on the main menu: your own machine on its stand, and every player's machine with its pilot, the most liked first, and a LIKE button (Project 0's `p0.entities.list()` and `like()`; `tools/gallery_snapshot.mjs` keeps a copy for where those are missing).
 
 | | |
 |---|---|
@@ -31,7 +31,7 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 | Up or W | accelerate |
 | Left / Right or A / D | steer |
 | Down or S | brake (in the air: nose down) |
-| Space + steering | drift: steering moves its angle (on through straight to the other side), letting go of the steering holds it, straight for a moment ends it; let go of Space for a turbo |
+| Space + steering | drift (6% slower; a nitro ends it, and no drift while one burns): steering moves its angle (on through straight to the other side), letting go of the steering holds it, straight for a moment ends it; let go of Space for a turbo |
 | Shift | nitro: a cell per press; held, it fires whenever a cell is ready and burns another every second. A chain started with two cells in the gauge becomes a DOUBLE, with three or more a MEGA NITRO |
 | Q / E | slide into a turn; double tap for a side attack |
 | F | spin attack |

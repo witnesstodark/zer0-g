@@ -48,6 +48,7 @@ const TILE_NAV = [{ r: 1, d: 2 }, { l: 0, d: 3 }, { u: 0, r: 3 }, { u: 1, l: 2, 
 const GARAGE = { x: 40, y: 92, w: 780, h: 548 }
 const GAL = { x: 40, y: 92, cols: 3, rows: 2, w: 188, h: 262, gap: 14 }
 const GAL_STAND = { x: 664, y: 92, w: 576, h: 300 }
+const LIKE_BTN = { x: 1068, y: 414, w: 154, h: 40 }   // under the stand, on the right
 // the buttons for the mouse: back (bottom left) and on (bottom right)
 const BACK = { x: 40, y: 663, w: 150, h: 40 }
 const GO = { x: 1050, y: 663, w: 190, h: 40 }
@@ -141,6 +142,19 @@ export class Menus {
     this.redraw()
   }
 
+  /** Like the picked machine (or take the like back). */
+  likeGallery() {
+    const g = this.gal, m = g.list?.[g.at]
+    if (!m || g.liking) return
+    if (m.mine) { g.note = 'YOURS: THE OTHERS LIKE IT HERE'; this.redraw(); return }
+    if (!this.galleryApi.canLike) { g.note = 'SIGN IN TO PROJECT 0 TO LIKE'; this.redraw(); return }
+    g.liking = true
+    this.audio.sfx(m.liked ? 'gtr_back' : 'gtr_select', { volume: 0.8 })
+    this.galleryApi.like(m).then(r => { g.liking = false; g.note = r?.ok ? (m.liked ? 'LIKED!' : '') : String(r?.reason ?? 'COULD NOT LIKE IT').toUpperCase(); g.pulse = m.liked ? 1 : 0; this.redraw() })
+      .catch(() => { g.liking = false; g.note = 'NO CONNECTION'; this.redraw() })
+    this.redraw()
+  }
+
   /** Pick gallery card k: its machine (loaded once) onto the stand. */
   pickGallery(k) {
     const g = this.gal
@@ -148,6 +162,7 @@ export class Menus {
     k = Math.max(0, Math.min(g.list.length - 1, k))
     const per = GAL.cols * GAL.rows, page = Math.floor(k / per)
     g.at = k
+    g.note = ''
     if (page !== g.page) { g.page = page; this.showGallery() }
     const m = g.list[k]
     g.pilot = m.pilot ?? null
@@ -252,7 +267,7 @@ export class Menus {
   }
 
   redraw() {
-    this.page.update(`${this.screen}|${JSON.stringify(this.sel)}|${JSON.stringify(this.best)}|${JSON.stringify(this.table ?? [])}|${this.dataKey ?? ''}|${this.lobbyKey()}|${JSON.stringify(this.weekly)}|${this.flash}|${this.hover}|${this.screen === 'cup' ? Math.round(this.cupT * 60) : 0}|${this.gal.at}|${this.gal.page}|${this.gal.list?.length ?? -1}|${this.gal.loadingModel ?? ''}|${!!this.gal.pilot}`, this.screen)
+    this.page.update(`${this.screen}|${JSON.stringify(this.sel)}|${JSON.stringify(this.best)}|${JSON.stringify(this.table ?? [])}|${this.dataKey ?? ''}|${this.lobbyKey()}|${JSON.stringify(this.weekly)}|${this.flash}|${this.hover}|${this.screen === 'cup' ? Math.round(this.cupT * 60) : 0}|${this.gal.at}|${this.gal.page}|${this.gal.list?.length ?? -1}|${this.gal.loadingModel ?? ''}|${!!this.gal.pilot}|${this.gal.note ?? ''}|${this.gal.liking ? 1 : 0}|${this.gal.list?.[this.gal.at]?.likes ?? 0}|${this.gal.list?.[this.gal.at]?.liked ? 1 : 0}|${Math.round((this.gal.pulse ?? 0) * 20)}`, this.screen)
   }
 
   // ------------------------------------------------------------ the mouse
@@ -310,8 +325,9 @@ export class Menus {
       const per = GAL.cols * GAL.rows, first = this.gal.page * per
       this.gal.list.slice(first, first + per).forEach((m, j) => {
         const x = GAL.x + (j % GAL.cols) * (GAL.w + GAL.gap), y = GAL.y + Math.floor(j / GAL.cols) * (GAL.h + GAL.gap)
-        add(`gal:${first + j}`, x, y, GAL.w, GAL.h, () => { if (this.gal.at !== first + j) { this.audio.sfx('gtr_move', { volume: 0.6 }); this.pickGallery(first + j) } })
+        add(`gal:${first + j}`, x, y, GAL.w, GAL.h, () => { if (this.gal.at !== first + j) { this.audio.sfx('gtr_move', { volume: 0.6 }); this.pickGallery(first + j) } }, { twice: true })
       })
+      add('like', LIKE_BTN.x, LIKE_BTN.y, LIKE_BTN.w, LIKE_BTN.h, () => this.likeGallery())
     }
     if (scr === 'machine' && !(this.onlinePick && this.locked)) {
       PILOTS.forEach((p, k) => {
@@ -506,6 +522,7 @@ export class Menus {
       if (g.list?.length) {
         const d = left ? -1 : right ? 1 : up ? -GAL.cols : down ? GAL.cols : 0
         if (d) { const k = Math.max(0, Math.min(g.list.length - 1, g.at + d)); if (k !== g.at) { this.pickGallery(k); moved = true } }
+        if (ok) { this.likeGallery(); return true }
       }
     } else if (scr === 'machine') {
       const n = PILOTS.length, cols = GRID.cols
@@ -566,6 +583,7 @@ export class Menus {
     if (['mode', 'machine', 'lobby', 'online'].includes(this.screen) && Math.floor(this.blinkT * 4) !== Math.floor((this.blinkT - dt) * 4)) this.redraw()
     if (this.screen === 'title') this.prompt.show(Math.floor(this.blinkT * 1.6) % 2 === 0)
     if (this.screen === 'machine' || this.screen === 'garage' || this.screen === 'gallery') this.showroom.update(dt)
+    if (this.screen === 'gallery' && this.gal.pulse > 0) { this.gal.pulse = Math.max(0, this.gal.pulse - dt * 2.5); this.redraw() }
     if (this.screen === 'cup' && this.cupT < CUP_ANIM) {
       const was = this.cupT
       this.cupT = Math.min(CUP_ANIM, this.cupT + dt)
@@ -717,7 +735,7 @@ export class Menus {
     }
     if (screen === 'gallery') {
       const gl = this.gal, list = gl.list
-      this.header(c, 'GALLERY', list ? `${list.length} MACHINE${list.length === 1 ? '' : 'S'} BY PLAYERS` : 'LOADING', '#7dffb0')
+      this.header(c, 'GALLERY', list ? `${list.length} MACHINE${list.length === 1 ? '' : 'S'} BY PLAYERS  /  THE MOST LIKED FIRST` : 'LOADING', '#7dffb0')
       if (!list) { t.draw(c, 'LOADING THE PLAYERS\' MACHINES...', 640, 360, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.2, outline: false }); hint('BACKSPACE: MENU'); return }
       if (!list.length) { t.draw(c, 'NO MACHINES YET: BE THE FIRST (MY MACHINE SAYS HOW)', 640, 360, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.16, outline: false }); hint('BACKSPACE: MENU'); return }
       const per = GAL.cols * GAL.rows, first = gl.page * per
@@ -726,8 +744,13 @@ export class Menus {
         const on = k === gl.at, acc = '#' + String(m.data.accent).slice(1)
         glass(c, x, y, GAL.w, GAL.h, { on, hover: this.hover === `gal:${k}`, accent: acc, k: 10, glow: on })
         if (!m.face) { c.fillStyle = 'rgba(20,24,50,0.8)'; c.fillRect(x + 8, y + 8, GAL.w - 16, GAL.w - 16) }
-        f.draw(c, String(m.name).slice(0, 15), x + 12, y + GAL.w + 12, 13, { color: on ? '#ffffff' : '#c8d8e8', skew: 0.12, outline: false })
+        // its place by likes (the top three in gold), its name, who made it, its likes
+        const top = m.place <= 3 && (m.likes ?? 0) > 0
+        const pw = f.draw(c, `#${m.place}`, x + 12, y + GAL.w + 12, 12, { color: top ? C_GOLD : MUTED, skew: 0.1, outline: false })
+        f.draw(c, String(m.name).slice(0, 13), x + 20 + pw, y + GAL.w + 12, 13, { color: on ? '#ffffff' : '#c8d8e8', skew: 0.12, outline: false })
         t.draw(c, `BY ${m.owner}`, x + 12, y + GAL.w + 34, 9, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
+        heart(c, x + 18, y + GAL.w + 56, 6, m.liked ? '#ff4d8d' : 'rgba(255,120,170,0.6)', m.liked)
+        t.draw(c, String(m.likes ?? 0), x + 30, y + GAL.w + 57, 10, { color: m.liked ? '#ff8ab8' : INK, skew: 0, spacing: 0.1, outline: false })
         // under the picture (the pictures are drawn over the page): yours, or here in the lot now
         if (m.mine || m.here) {
           const tag = m.mine ? 'YOURS' : 'IN THE LOT', tc = m.mine ? '#ff8ae6' : '#7dffb0', tw = t.measure(tag, 8, 0.2) + 14
@@ -745,9 +768,10 @@ export class Menus {
       c.fillStyle = gr; c.fill(); c.strokeStyle = 'rgba(125,255,176,0.3)'; c.lineWidth = 1; c.stroke(); c.restore()
       if (gl.loadingModel) t.draw(c, 'BRINGING IT OUT...', GAL_STAND.x + GAL_STAND.w / 2, GAL_STAND.y + GAL_STAND.h / 2, 11, { color: MUTED, align: 'center', skew: 0, spacing: 0.24, outline: false })
       if (m) {
-        const d = m.data, acc = '#' + String(d.accent).slice(1), X = GAL_STAND.x, Y = GAL_STAND.y + GAL_STAND.h + 28
-        f.draw(c, String(m.name).slice(0, 22), X, Y, 22, { color: '#ffffff', skew: 0.12, outline: false, glow: acc, glowBlur: 10 })
-        t.draw(c, `PILOT ${String(d.pilot).toUpperCase()}  /  MADE BY ${m.owner}'S AGENT`, X, Y + 30, 10, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
+        const d = m.data, acc = '#' + String(d.accent).slice(1), X = GAL_STAND.x + 18, Y = GAL_STAND.y + GAL_STAND.h + 36
+        glass(c, GAL_STAND.x, GAL_STAND.y + GAL_STAND.h + 10, GAL_STAND.w, 236, { k: 12 })
+        f.draw(c, String(m.name).slice(0, 16), X, Y, 22, { color: '#ffffff', skew: 0.12, outline: false, glow: acc, glowBlur: 10 })
+        t.draw(c, `PILOT ${String(d.pilot).toUpperCase()}  /  MADE BY ${m.owner}'S AGENT`.slice(0, 46), X, Y + 30, 10, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
         ;[['BODY', d.stats.body], ['BOOST', d.stats.boost], ['GRIP', d.stats.grip]].forEach(([name, gr2], k) => {
           const yy = Y + 64 + k * 30
           t.draw(c, name, X, yy, 10, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
@@ -759,8 +783,18 @@ export class Menus {
         t.draw(c, `NITRO  ${String(d.particle).toUpperCase()}S`, R, Y + 94, 10, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
         swatch(c, R, Y + 112, d.accent, 'ACCENT'); swatch(c, R + 120, Y + 112, d.flame, 'FLAME')
         if (d.description) t.draw(c, String(d.description).toUpperCase().slice(0, 64) + (String(d.description).length > 64 ? '...' : ''), X, Y + 170, 8.5, { color: FAINT, skew: 0, spacing: 0.08, outline: false })
+        // the like button: a heart, the count; lit when you like it
+        const b = LIKE_BTN, hov = this.hover === 'like', lit = m.liked, pulse = gl.pulse ?? 0
+        c.save(); cut(c, b.x, b.y, b.w, b.h, 8)
+        if (lit) { const lg = c.createLinearGradient(b.x, 0, b.x + b.w, 0); lg.addColorStop(0, 'rgba(255,60,140,0.55)'); lg.addColorStop(1, 'rgba(255,43,214,0.4)'); c.fillStyle = lg; c.shadowColor = '#ff4d8d'; c.shadowBlur = 14 + pulse * 20 }
+        else c.fillStyle = hov ? 'rgba(255,77,141,0.16)' : 'rgba(8,12,30,0.75)'
+        c.fill(); c.strokeStyle = lit ? '#ffb3cf' : hov ? '#ff8ab8' : 'rgba(255,120,170,0.5)'; c.lineWidth = 1.4; c.stroke(); c.restore()
+        heart(c, b.x + 30, b.y + b.h / 2 + 1, 9 * (1 + pulse * 0.35), lit ? '#ffffff' : '#ff4d8d', lit)
+        f.draw(c, String(m.likes ?? 0), b.x + 52, b.y + b.h / 2 + 1, 17, { color: '#ffffff', skew: 0.1, outline: false })
+        t.draw(c, m.mine ? 'YOURS' : gl.liking ? '...' : lit ? 'LIKED' : 'LIKE', b.x + b.w - 16, b.y + b.h / 2 + 1, 11, { color: lit ? '#ffffff' : '#ff8ab8', align: 'right', skew: 0, spacing: 0.24, outline: false })
+        if (gl.note) t.draw(c, gl.note, b.x + b.w, b.y + b.h + 16, 9, { color: gl.note === 'LIKED!' ? '#ff8ab8' : MUTED, align: 'right', skew: 0, spacing: 0.14, outline: false })
       }
-      hint('ARROWS: PICK  ·  BACKSPACE: MENU')
+      hint('ARROWS: PICK  ·  SPACE: LIKE  ·  BACKSPACE: MENU')
       return
     }
     if (screen === 'machine') {
@@ -1202,6 +1236,17 @@ function brackets(c, x, y, w, h, color, len = 14, pad = 5) {
   c.moveTo(X1, Y1 - len); c.lineTo(X1, Y1); c.lineTo(X1 - len, Y1)
   c.moveTo(X0 + len, Y1); c.lineTo(X0, Y1); c.lineTo(X0, Y1 - len)
   c.stroke(); c.restore()
+}
+
+/** A heart at (x, y), r its half width: filled, or an outline. */
+function heart(c, x, y, r, color, filled) {
+  c.save(); c.beginPath()
+  c.moveTo(x, y + r * 0.9)
+  c.bezierCurveTo(x - r * 1.3, y - r * 0.05, x - r * 0.75, y - r * 1.15, x, y - r * 0.45)
+  c.bezierCurveTo(x + r * 0.75, y - r * 1.15, x + r * 1.3, y - r * 0.05, x, y + r * 0.9)
+  c.closePath()
+  if (filled) { c.fillStyle = color; c.shadowColor = color; c.shadowBlur = 8; c.fill() } else { c.strokeStyle = color; c.lineWidth = 1.6; c.stroke() }
+  c.restore()
 }
 
 /** A colour chip with its name (css colour or #rrggbb). */

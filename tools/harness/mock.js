@@ -51,6 +51,25 @@ const p0 = {
     hint: 'Ask your AI agent: make me a machine for zer0-g (Project 0)',
     mine() { return sampleMachine(params.get('entity'), p0.me.id) },
     of(id) { return sampleMachine(params.get('entity') ?? '1', id) },
+    // the gallery: the copied list with likes kept in localStorage (?guest=1: may not like)
+    async list({ sort = 'likes' } = {}) {
+      const snap = await fetch(location.origin + '/experience/assets/gallery.json').then(r => r.json()).catch(() => ({ machines: [] }))
+      const likes = JSON.parse(localStorage.getItem('p0-likes') ?? '{}')
+      const mineIds = JSON.parse(localStorage.getItem(`p0-liked-${p0.me.id}`) ?? '[]')
+      const list = snap.machines.map(m => ({ ...m, owner: { name: m.owner }, likes: (m.likes ?? 0) + (likes[m.id] ?? 0), liked: mineIds.includes(m.id) }))
+      if (sort === 'likes') list.sort((a, b) => b.likes - a.likes)
+      return { entities: list, canLike: params.get('guest') !== '1' }
+    },
+    async like(id, liked = true) {
+      if (params.get('guest') === '1') return { ok: false, reason: 'Sign in to like' }
+      const likes = JSON.parse(localStorage.getItem('p0-likes') ?? '{}')
+      const key = `p0-liked-${p0.me.id}`, mineIds = JSON.parse(localStorage.getItem(key) ?? '[]')
+      const had = mineIds.includes(id)
+      if (liked && !had) { mineIds.push(id); likes[id] = (likes[id] ?? 0) + 1 }
+      if (!liked && had) { mineIds.splice(mineIds.indexOf(id), 1); likes[id] = (likes[id] ?? 0) - 1 }
+      localStorage.setItem('p0-likes', JSON.stringify(likes)); localStorage.setItem(key, JSON.stringify(mineIds))
+      return { ok: true, likes: likes[id] ?? 0, liked }
+    },
   },
   time: 0, game: null, table: null, debugAutopilot: params.get('auto') === '1',
   // ?env=space|desert: every course in that world (the game reads p0.debugEnv; never set in the game)
@@ -112,6 +131,8 @@ if (PID) {
     if (restart) for (const k of Object.keys(room.state)) delete room.state[k]
     setTimeout(() => { bc.postMessage({ t: 'hello', from: PID, name: p0.me.name }); emit('reconnect') }, 300)
   }
+  // this player leaves the lot (the server would see the connection close): the others hear it now
+  window.__leave = () => bc.postMessage({ t: 'bye', from: PID })
   window.__drop = restart => { bc.postMessage({ t: 'drop', restart: !!restart }); drop(!!restart) }
   setInterval(() => {
     if (!room.isHost || performance.now() - lastInput > 5000) return

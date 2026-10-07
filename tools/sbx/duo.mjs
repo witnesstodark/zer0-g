@@ -9,7 +9,7 @@ const { chromium } = require('playwright-core')
 const out = fileURLToPath(new URL('../../shots/duo/', import.meta.url))
 try { rmSync(out, { recursive: true, force: true }) } catch {}
 mkdirSync(out, { recursive: true })
-const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] })
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] })
 const context = await browser.newContext({ viewport: { width: 960, height: 540 } })
 const open = async (pid, name) => {
   const page = await context.newPage()

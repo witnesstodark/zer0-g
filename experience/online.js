@@ -183,7 +183,9 @@ export class Online {
       else if (L.phase === 'pick') this.onPick?.(L)
       else if (L.phase === 'race' && L.field?.some(f => f.pid === this.me) && !this.race && !this.starting) {
         this.log(`lobby ${L.id}: the race starts at tick ${L.start}`)
-        this.starting = !!this.onRace?.(L)
+        // (set before: the game may begin it at once, inside the call, and begin() clears it)
+        this.starting = true
+        if (!this.onRace?.(L)) this.starting = false
       }
       else if (L.phase === 'open' && was) this.onOpen?.(L)
     }
@@ -281,6 +283,7 @@ export class Online {
         this.log(`lobby ${L.id}: the race is over, the lobby opens again`)
         this.set('lobby', { ...L, phase: 'open', field: null, until: 0 })
         for (const f of L.field) this.set(`done:${L.start}:${f.pid}`, null)
+        if (this.room.state[`drv:${L.start}`] != null) this.set(`drv:${L.start}`, null)
       }
     }
   }
@@ -316,30 +319,47 @@ export class Online {
   /** Start flying an online race: racers in field order (players first, then the AI rivals). */
   begin(lobby, racers, me) {
     this.starting = false
-    this.race = { lobby, racers, me, aiFrom: lobby.field.length, sentFinish: new Set() }
+    this.race = { lobby, racers, me, aiFrom: lobby.field.length, sentFinish: new Set(), seen: new Map(), began: this.p0.time }
     this.applyDriver()
   }
 
-  /** The AI rivals are flown by the first player of the field still inside; everyone else draws them. */
-  get isDriver() {
+  /**
+   * Who flies the AI rivals: the one named in the shared state (drv:<start>) while their game is running (their
+   * machine's updates keep coming), else the first player of the field who is in the lot and running. A driver
+   * whose game stops (a tab in the background, a frozen machine) is replaced after a couple of seconds, and the one
+   * who takes over stays the driver (the old one, back, does not take it back and make the rivals jump).
+   */
+  driverId() {
     const R = this.race
-    if (!R) return false
-    const ids = new Set(this.players)
-    const first = R.lobby.field.find(f => ids.has(f.pid))
-    return first?.pid === this.me
+    if (!R) return null
+    const ids = new Set(this.players), t = this.p0.time
+    const running = pid => pid === this.me || (ids.has(pid) && t - (R.seen.get(pid) ?? R.began) < 2.5)
+    const named = this.room.state[`drv:${R.lobby.start}`]
+    if (named != null && R.lobby.field.some(f => f.pid === named) && running(named)) return named
+    return R.lobby.field.find(f => running(f.pid))?.pid ?? null
   }
+
+  get isDriver() { return this.driverId() === this.me }
 
   applyDriver() {
     const R = this.race
     if (!R) return
     const drive = this.isDriver
     if (drive === R.driving) return
+    const first = R.driving === undefined
     R.driving = drive
+    // taking over: say so (once), and start the rivals from where their last update put them
+    const key = `drv:${R.lobby.start}`
+    if (drive && !first && this.room.state[key] !== this.me) { this.room.set(key, this.me); this.log('flying the AI rivals now') }
     R.racers.forEach((r, i) => {
       if (i < R.aiFrom) return
       const was = r.remote
       r.remote = !drive
-      if (was && !r.remote) r.net = null
+      if (was && !r.remote && r.net) {
+        const n = r.net, age = Math.min(1, this.p0.time - n.at)
+        r.D = n.D + n.sp * Math.cos(n.phi) * age; r.x = n.x; r.h = Math.max(0, n.h); r.sp = n.sp; r.psi = n.psi; r.phi = n.phi
+        r.net = null
+      }
     })
   }
 
@@ -374,6 +394,7 @@ export class Online {
       if (L && this.isOwner && L.phase === 'race' && L.start === g0(R) && L.field?.some(e => e.pid === d.old)) this.room.set('lobby', { ...L, field: L.field.map(e => e.pid === d.old ? { ...e, pid: from } : e) })
       return
     }
+    R.seen.set(from, now)
     if (d.t === 'r') {
       const k = R.lobby.field.findIndex(e => e.pid === from)
       const r = R.racers[k]

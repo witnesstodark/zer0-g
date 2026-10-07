@@ -121,28 +121,44 @@ export default async function start(p0) {
   } catch (err) { p0.log(`your machine did not load: ${err.message}`) }
   const entityHint = p0.entities?.kind && !ownMachine ? (p0.entities.hint || 'Ask your AI agent: make me a machine for zer0-g (Project 0)') : ''
 
-  // ---- the GALLERY: every player's machine. The game cannot ask Project 0 for the list from its sandbox, so it
-  // starts from a copy taken at publish (assets/gallery.json) and adds the machines of the players in the lot now
-  // (fresh from the server); pictures load when it opens, a machine's model when it is picked
-  const gallery = { entries: null }
+  // ---- the GALLERY: every player's machine, the most liked first (Project 0's p0.entities.list, with likes; where
+  // that is missing, the copy taken at publish, assets/gallery.json), and the machines of the players in the lot
+  // now; pictures load when it opens, a machine's model when it is picked
+  const gallery = { entries: null, canLike: false }
   async function galleryEntries() {
     if (gallery.entries) return gallery.entries
-    const snap = await json('assets/gallery.json').catch(() => ({ machines: [] }))
-    const list = (snap.machines ?? []).filter(m => m?.data && validateMachine(m.data).ok).map(m => ({ ...m, owner: String(m.owner ?? 'PLAYER').toUpperCase().slice(0, 16), here: false }))
+    let source = null
+    if (p0.entities?.list) {
+      try {
+        const r = await p0.entities.list({ sort: 'likes' })
+        if (r?.entities?.length) { source = r.entities.map(e => ({ id: e.id, owner: e.owner?.name, name: e.name, version: e.version, updated: e.updated, data: e.data, model: e.model, picture: e.picture, likes: e.likes ?? 0, liked: !!e.liked })); gallery.canLike = !!r.canLike }
+      } catch { /* the copy, then */ }
+    }
+    if (!source) source = ((await json('assets/gallery.json').catch(() => ({ machines: [] }))).machines ?? []).map(m => ({ ...m, likes: m.likes ?? 0, liked: false }))
+    const list = source.filter(m => m?.data && m.model && validateMachine(m.data).ok).map(m => ({ ...m, owner: String(m.owner ?? 'PLAYER').toUpperCase().slice(0, 16), here: false }))
     for (const pid of online.players ?? []) {
       try {
         const e = await p0.entities?.of?.(pid)
         if (!e?.data || !e.model || !validateMachine(e.data).ok) continue
         const k = list.findIndex(m => m.id === e.id)
-        const m = { id: e.id, owner: String(e.owner?.name ?? online.name(pid)).toUpperCase().slice(0, 16), name: e.name ?? e.data.name, data: e.data, model: e.model, picture: e.picture, updated: e.updated ?? 0, here: true }
+        const m = { id: e.id, owner: String(e.owner?.name ?? online.name(pid)).toUpperCase().slice(0, 16), name: e.name ?? e.data.name, data: e.data, model: e.model, picture: e.picture, updated: e.updated ?? 0, likes: e.likes ?? 0, liked: false, here: true }
         if (k >= 0) list[k] = { ...list[k], ...m }; else list.push(m)
       } catch { /* that player's machine stays as copied */ }
     }
     for (const m of list) m.mine = !!ownEntity && m.id === ownEntity.id
-    list.sort((a, b) => (b.mine - a.mine) || (b.here - a.here) || (b.updated ?? 0) - (a.updated ?? 0))
+    // the most liked first (ties: the newest); their places by likes
+    list.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0) || (b.updated ?? 0) - (a.updated ?? 0))
+    list.forEach((m, k) => { m.place = k + 1 })
     await Promise.all(list.map(async m => { if (m.picture) try { m.face = await textureAt(entityUrl(m.picture)) } catch { m.face = null } }))
     gallery.entries = list
     return list
+  }
+  /** Like a gallery machine (or take it back): its likes and whether you like it now, or why not. */
+  async function galleryLike(m) {
+    if (!p0.entities?.like) return { ok: false, reason: 'LIKES ARE NOT HERE YET' }
+    const r = await p0.entities.like(m.id, !m.liked)
+    if (r?.ok) { m.likes = r.likes; m.liked = r.liked }
+    return r ?? { ok: false }
   }
   /** A gallery machine's pilot entry, its model loaded (once) for the stand. */
   async function galleryPilot(m) {
@@ -943,7 +959,7 @@ export default async function start(p0) {
     onLobby: () => backToLobby(),
     entityHint,
     own: ownMachine, ownEntity,
-    gallery: { entries: galleryEntries, pilot: galleryPilot },
+    gallery: { entries: galleryEntries, pilot: galleryPilot, like: galleryLike, get canLike() { return gallery.canLike } },
     onBack: () => toMenu(),
   })
   if (p0.table) menus.setTable(p0.table)

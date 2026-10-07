@@ -187,6 +187,8 @@ export class Race {
       if (mega && was < 3) r.megaAt = this.time          // the moment it went MEGA (the game's big show)
       r.boostAt = this.time
       this.events('boost', r, r.boostStack)
+      // the nitro or the drift, never both: a nitro ends a drift at once (no turbo for it)
+      if (r.drift) { r.drift = 0; r.driftT = 0; r.driftArm = 0; this.events('driftEnd', r) }
     }
     inp.boost = false
     // the gauge fills by itself (a cell in about six seconds), and the shield mends a little
@@ -218,7 +220,8 @@ export class Race {
       const dir = Math.abs(inp.steer) > 0.08 ? Math.sign(inp.steer) : Math.abs(r.lean) > 0.3 ? Math.sign(r.lean) : 0
       const aim = clamp(inp.steer + r.lean * 0.5, -1, 1)
       if (r.drift === 0) {
-        if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air) {
+        // (not while a nitro burns: one or the other)
+        if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air && r.boostT <= 0) {
           r.drift = dir
           r.driftSide = dir * 0.4                       // the angle: -1 hard left .. 1 hard right
           r.driftStraight = 0
@@ -291,6 +294,7 @@ export class Race {
     if (r.boostT > 0) vmax = vmax * (stack >= 3 ? 1.64 : 1.32 + 0.12 * (stack - 1)) + r.boostG * 0.9 * U * V
     if (onDash) vmax *= 1.3
     if (r.turbo > 0) vmax *= 1.15
+    if (r.drift) vmax *= 0.94                  // a drift costs a little speed (6%) for its turn
     if (r.energy < EMPTY) vmax *= 0.97
     vmax *= 1 + 0.25 * r.flow
     if (!air && !r.finished) {

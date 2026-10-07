@@ -1,0 +1,35 @@
+// The nitro and the drift, never both (round 20): a drift, then SHIFT ends it at once; a nitro burning, SPACE does not
+// start a drift; a drift is 6% slower. node tools/sbx/driftboost.mjs
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
+const { chromium } = require('playwright-core')
+const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] })
+const page = await (await browser.newContext({ viewport: { width: 960, height: 540 } })).newPage()
+page.on('pageerror', e => console.log('pageerror', e.message))
+await page.goto('http://localhost:8383/tools/harness/index.html')
+await page.waitForFunction(() => window.__started, null, { timeout: 120000 })
+const wait = ms => page.waitForTimeout(ms)
+const st = () => page.evaluate(() => { const m = window.__dbg.me; return { drift: m.drift, boostT: +m.boostT.toFixed(2), sp: +(m.sp / m.vmax).toFixed(3), nitro: Math.round(m.nitro) } })
+let fails = 0
+const check = (ok, what, d) => { if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}  ${JSON.stringify(d)}`) }
+await page.evaluate(() => { const d = window.__dbg; d.menus.hideAll(); d.menus.onStart({ mode: 'ta', machine: 0, engine: 0.5, cls: 1, course: 0, row: 0 }) })
+await wait(8500)
+await page.keyboard.down('KeyW'); await wait(3000)
+const flat = (await st()).sp
+await page.keyboard.down('Space'); await page.keyboard.down('KeyD'); await wait(150); await page.keyboard.up('KeyD'); await wait(700)
+const drifting = await st()
+check(drifting.drift !== 0, 'a drift', drifting)
+await wait(1500)
+const later = await st()
+check(later.drift === 0 || later.sp < flat - 0.03, 'slower in it', { flat, drifting: later.sp })
+await page.evaluate(() => { window.__dbg.me.nitro = 100 })
+await page.keyboard.press('ShiftLeft'); await wait(120)
+const after = await st()
+check(after.drift === 0 && after.boostT > 0, 'SHIFT ends the drift, the nitro burns', after)
+await page.keyboard.up('Space'); await wait(100)
+await page.keyboard.down('Space'); await page.keyboard.down('KeyA'); await wait(200); await page.keyboard.up('KeyA')
+const tried = await st()
+check(tried.drift === 0, 'no drift while the nitro burns', tried)
+await page.keyboard.up('Space')
+console.log(fails ? `${fails} FAILED` : 'ALL PASSED')
+await browser.close()
