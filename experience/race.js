@@ -292,7 +292,15 @@ export class Race {
       // it is measured from the drift's own side (a left drift turns exactly as a right one does)
       r.driftAge = (r.driftAge ?? 0) + dt
       const fast = clamp(r.sp / r.vmax, 1, 1.4), s = r.drift, a = s * aim
-      turn = r.turnRate * s * clamp(1.45 * s * r.driftSide + (a > 0 ? 0.45 : 1.2) * a, -1, 1.7) * Math.min(1, 0.4 + r.driftAge / 0.2) * fast
+      // Round 23 (Stefan: "it should carry me forward, I just go sideways; instead I hit the wall on the right in a
+      // split second"): with no steering the drift turns nothing and its path lines up with the road again (the
+      // body stays swung round: it flies sideways, carried along, round the bend too, see below); steered into the
+      // slide it turns, a little for a tap (the angle is still light) and harder the longer it is held (up to 1.7
+      // times a plain turn); steered out it turns away at a plain turn's rate
+      const ang = Math.abs(r.driftSide) ** 1.4
+      turn = a > 0 ? r.turnRate * s * Math.min(1.7, (0.45 + 1.25 * ang) * a) : r.turnRate * s * 1.0 * a
+      turn *= Math.min(1, 0.4 + r.driftAge / 0.2) * fast
+      if (Math.abs(aim) < 0.08) r.psi -= r.psi * Math.min(1, dt * 1.1)
     }
     // the slide you see: the body swung round past its heading, by the drift's angle (more when steering into it)
     const side = r.drift ? clamp(r.driftSide / 0.6, -1, 1) : 0
@@ -303,7 +311,10 @@ export class Race {
     const ds = vs * stretch * dt
     // the road turns under the machine: the bank carries part of it round
     const roadTurn = k * ds * (1 - (air ? 0 : assist))
-    r.psi += turn * dt - roadTurn
+    // a drift is carried round the bend (Stefan: "it should carry me forward, sideways, not into the wall"): its
+    // heading turns with the road, as if fully banked, and only the drift's own turn takes it in or out; the
+    // path lags a touch outwards (the velocity still turns with the road below, and grip brings it round)
+    r.psi += turn * dt - (r.drift && !air ? 0 : roadTurn)
     r.phi -= roadTurn
     if (r.spinT > 0) r.spinVis = (r.spinVis ?? 0) + dt * 22
     else r.spinVis = 0
@@ -313,7 +324,7 @@ export class Race {
       const grip = r.drift ? r.gripRate * 0.95 : r.gripRate * (r.lean !== 0 ? 1 - Math.abs(r.lean) * 0.45 : 1)
       const slip = wrapAngle(r.psi - r.phi)
       r.phi += slip * (1 - Math.exp(-grip * dt))
-      r.sp *= 1 - Math.min(0.5, Math.abs(slip) * (r.drift ? 0.15 : 0.9) * dt)
+      r.sp *= 1 - Math.min(0.5, Math.abs(slip) * (r.drift ? 0.08 : 0.9) * dt)
     }
     // too far from the road's direction: the machine is turned back (it is still a race, not a stunt; a
     // drift's path stays within a gentle angle of the road, its body shows the slide)
@@ -328,7 +339,7 @@ export class Race {
     if (r.boostT > 0) vmax = vmax * (stack >= 3 ? 1.64 : 1.32 + 0.12 * (stack - 1)) + r.boostG * 0.9 * U * V
     if (onDash) vmax *= 1.3
     if (r.turbo > 0) vmax *= 1.15
-    if (r.drift) vmax *= 0.94                  // a drift costs a little speed (6%) for its turn
+    if (r.drift) vmax *= 0.96                  // a drift costs a little speed (4%: round 23, "it cuts my speed")
     if (r.energy < EMPTY) vmax *= 0.97
     vmax *= 1 + 0.25 * r.flow
     if (!air && !r.finished) {
@@ -557,14 +568,15 @@ export class Race {
     }
     // a jump plate ahead: take off near the middle and straight (no grip in the air to undo a slide, and the
     // landings are open)
-    for (const j of t.jumps) if (t.wrapS(j.s1 - s) < 2 + r.sp * 0.6) { xt = clamp(xt, -0.35, 0.35); break }
+    let jumpAhead = false
+    for (const j of t.jumps) if (t.wrapS(j.s1 - s) < 2 + r.sp * 0.6) { xt = clamp(xt, -0.35, 0.35); jumpAhead = true; break }
     // aim from where the slide is taking it, not from where it is
     if (r.air) xt = clamp(xt, -0.4, 0.4)            // in the air: line up with the middle of the landing
     const xNext = r.x + r.sp * Math.sin(r.phi) * 0.18
     const psiWant = Math.atan2(xt - xNext, look)
     const ahead = t.index(s + 1.2)
     const kAhead = t.curv[ahead] * (1 - t.assist[ahead])
-    const need = kAhead * r.sp
+    const need = r.drift && !r.air ? 0 : kAhead * r.sp       // a drift is carried round the bend by itself
     const raw = (psiWant - r.psi) * 3.0 + (psiWant - r.phi) * 1.2 + need / r.turnRate
     inp.steer = clamp(raw, -1, 1)
     inp.leanR = raw > 1.15
@@ -574,7 +586,7 @@ export class Race {
     // (kept on the racer: after the goal the autopilot drives a player, who has no r.ai)
     if (r.aiDrifting && !r.drift) r.aiDriftOff = this.time
     r.aiDrifting = !!r.drift
-    inp.drift = r.drift ? raw * r.drift > 0.3 && raw * r.drift < 0.95 : this.time - (r.aiDriftOff ?? -9) > 0.9 && Math.abs(raw) > 0.5 && Math.abs(raw) < 0.95 && r.sp > r.vmax * 0.6 && !t.curved(t.index(s + 2))
+    inp.drift = r.drift ? !jumpAhead && raw * r.drift > 0.3 && raw * r.drift < 0.95 : this.time - (r.aiDriftOff ?? -9) > 0.9 && Math.abs(raw) > 0.5 && Math.abs(raw) < 0.95 && r.sp > r.vmax * 0.6 && !t.curved(t.index(s + 2)) && !jumpAhead
     // speed for the turns ahead
     const kmax = Math.abs(t.hardestAhead(s, 1.8 + r.sp * 0.6))
     const vLimit = kmax > 0.01 ? (r.turnRate + 0.2) / kmax : 99

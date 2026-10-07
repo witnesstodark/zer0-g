@@ -20,8 +20,11 @@ await page.keyboard.down('Space'); await page.keyboard.down('KeyD'); await wait(
 const drifting = await st()
 check(drifting.drift !== 0, 'a drift', drifting)
 await wait(1500)
-const later = await st()
-check(later.drift === 0 || later.sp < flat - 0.03, 'slower in it', { flat, drifting: later.sp })
+const later = await st(), flow = await page.evaluate(() => window.__dbg.me.flow)
+// (round 23: compared with the speed before the drift it was a race against the machine still speeding up, and it
+// passed only because the drift used to fly into a wall; now against the top speed it may have: 4% under the flat
+// top speed with the flow's share)
+check(later.drift === 0 || later.sp <= 0.96 * (1 + 0.25 * flow) + 0.012, 'slower in it (under 96% of the top speed)', { flat, drifting: later.sp, cap: +(0.96 * (1 + 0.25 * flow)).toFixed(3) })
 await page.evaluate(() => { window.__dbg.me.nitro = 100 })
 await page.keyboard.press('ShiftLeft'); await wait(120)
 const after = await st()
