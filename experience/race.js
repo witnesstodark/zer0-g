@@ -78,7 +78,7 @@ export class Racer {
     this.lapTimes = []; this.lapStart = 0; this.lap = 0
     this.kos = 0; this.lastHitBy = null; this.lastHitAt = -99
     this.flash = 0; this.scrape = 0; this.lean = 0; this.steerVis = 0
-    this.drift = 0; this.driftT = 0; this.driftArm = 0; this.turbo = 0; this.hop = 0; this.driftVis = 0; this.driftSide = 0; this.driftStraight = 0
+    this.drift = 0; this.driftT = 0; this.driftArm = 0; this.turbo = 0; this.hop = 0; this.driftVis = 0; this.driftSide = 0; this.driftStraight = 0; this.steerHold = 0; this.steerDir = 0
     this.safeD = D; this.safeX = x; this.ghost = 0
     this.nitro = NITRO_CELL * 2
     this.flow = 0; this.flowFull = false
@@ -220,18 +220,23 @@ export class Race {
 
     // ---- the drift: hold SPACE and touch the steering (or lean with Q/E) and the machine hops and slides at
     // once, even in a gentle bend: the body swings well round while its path bends only a little. Its angle is
-    // yours to change: steering moves it (into the turn to tighten it, out of it to ease it, on through straight
-    // to slide the other way) and letting go of the steering holds it where it is. Held straight for a moment,
-    // the drift ends. It fills the nitro as it slides, and letting go of SPACE (or straightening out) gives a
+    // yours to change, and it answers how long the steering is held (round 22, Stefan: "a tap, a light slide round
+    // the corner; held, it turns hard like now"): a tap into the turn adds a little, held it tightens faster and
+    // faster; steering out eases it (held on, through straight to slide the other way); let go and it settles back
+    // to a light slide. Held straight for a moment, the drift ends. It fills the nitro as it slides, and letting go of SPACE (or straightening out) gives a
     // turbo that grows with how long it was held (blue, orange, pink)
     r.hop = Math.max(0, r.hop - dt)
     turbo: {
       const dir = Math.abs(inp.steer) > 0.08 ? Math.sign(inp.steer) : Math.abs(r.lean) > 0.3 ? Math.sign(r.lean) : 0
       const aim = clamp(inp.steer + r.lean * 0.5, -1, 1)
+      // how long the steering has been held one way
+      const aimDir = Math.abs(aim) > 0.08 ? Math.sign(aim) : 0
+      r.steerHold = aimDir && aimDir === r.steerDir ? (r.steerHold || 0) + dt : 0
+      r.steerDir = aimDir
       if (r.drift === 0) {
         if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air) {
           r.drift = dir
-          r.driftSide = dir * 0.4                       // the angle: -1 hard left .. 1 hard right
+          r.driftSide = dir * 0.2                       // the angle: -1 hard left .. 1 hard right; it starts light
           r.driftAge = 0
           r.driftStraight = 0
           r.driftT = 0
@@ -242,22 +247,30 @@ export class Race {
         break turbo
       }
       // a drift taken over from another screen (a rival flown there until now) comes without its angle
-      if (!Number.isFinite(r.driftSide)) { r.driftSide = r.drift * 0.4; r.driftStraight = 0 }
+      if (!Number.isFinite(r.driftSide)) { r.driftSide = r.drift * 0.2; r.driftStraight = 0 }
       // a drift taken while a nitro burns earns nothing (no nitro, no turbo) until the nitro is spent
       if (r.boostT <= 0) {
         r.driftT += dt
         this.charge(r, (8 + 4 * driftTier(r)) * dt)
       }
-      // steering moves the angle: further into the slide up to where it points, or back the other way (easing it,
-      // and on through straight to the other side); letting go (or steering less) holds it where it is
-      if (Math.abs(aim) > 0.08) {
-        const d = aim - r.driftSide
-        if (Math.sign(aim) !== Math.sign(r.driftSide) || Math.abs(aim) > Math.abs(r.driftSide)) r.driftSide += Math.sign(d) * Math.min(Math.abs(d), 5 * dt)
+      // steering moves the angle: into the slide it grows, slowly for a tap and faster the longer it is held (a
+      // tenth of a second adds about 0.14, held a quarter of a second it is at 0.7, half a second hard over); out of it, it eases (a tap takes off
+      // a little, held it swings on through straight to the other side); let go and it settles back to a light slide
+      // (unless it was eased to straight: held there, the drift ends)
+      const LIGHT = 0.2, STRAIGHT = 0.1
+      if (aimDir) {
+        const d = aim - r.driftSide, into = aimDir === Math.sign(r.driftSide)
+        const rate = into ? Math.min(5, 1 + 8 * r.steerHold) : Math.min(6, 1.2 + 6 * r.steerHold)
+        if (!into || Math.abs(aim) > Math.abs(r.driftSide)) r.driftSide += Math.sign(d) * Math.min(Math.abs(d), rate * dt)
+      } else {
+        const a = r.drift * r.driftSide
+        if (a > LIGHT) r.driftSide -= r.drift * Math.min(a - LIGHT, 0.7 * dt)
+        else if (a > STRAIGHT) r.driftSide += r.drift * Math.min(LIGHT - a, 0.4 * dt)
       }
       // across to the other side: a hop as the tail swings over
       if (Math.abs(r.driftSide) > 0.15 && Math.sign(r.driftSide) !== r.drift) { r.drift = Math.sign(r.driftSide); r.hop = 0.12; this.events('drift', r) }
-      r.driftStraight = Math.abs(r.driftSide) < 0.15 ? r.driftStraight + dt : 0
-      if (!inp.drift || r.sp < r.vmax * 0.25 || air || r.driftStraight > 0.3) {
+      r.driftStraight = Math.abs(r.driftSide) < STRAIGHT ? r.driftStraight + dt : 0
+      if (!inp.drift || r.sp < r.vmax * 0.25 || air || r.driftStraight > 0.35) {
         const tier = driftTier(r)
         if (tier && !air) {
           r.turbo = [0, 0.5, 0.8, 1.1][tier]
@@ -270,15 +283,16 @@ export class Race {
         this.events('driftEnd', r)
         break turbo
       }
-      // the drift's turn (round 22, Stefan: "it pulls me into the wall at the start and I cannot steer off one"):
-      // a gentle arc from its angle, and most of it from the steering now, at once: into the slide turns tighter
-      // than a plain turn, out of it eases off and even turns away, so a wall can be left. It comes in over a fifth
-      // of a second (by the drift's own age: one taken in a nitro, whose bonus clock stands still, turns too), and
-      // at nitro speeds it turns more, so the line through a bend holds
-      // (measured from the drift's own side, so a left drift turns exactly as a right one does)
+      // the drift's turn (round 22, Stefan: "it pulls me into the wall at the start and I cannot steer off one",
+      // then "a tap should slide me lightly round the corner, held it should turn hard"): most of it comes from the
+      // angle, so a light slide carves gently and a held one tighter than a plain turn; the steering adds a little
+      // into the slide and a lot out of it, so even a held slide steered out eases at once and a light one turns
+      // away from a wall. It comes in over a fifth of a second (by the drift's own age: one taken in a nitro, whose
+      // bonus clock stands still, turns too), at nitro speeds it turns more so the line through a bend holds, and
+      // it is measured from the drift's own side (a left drift turns exactly as a right one does)
       r.driftAge = (r.driftAge ?? 0) + dt
-      const fast = clamp(r.sp / r.vmax, 1, 1.4), s = r.drift
-      turn = r.turnRate * s * clamp(s * (0.35 * r.driftSide + 1.25 * aim), -1, 1.7) * Math.min(1, 0.4 + r.driftAge / 0.2) * fast
+      const fast = clamp(r.sp / r.vmax, 1, 1.4), s = r.drift, a = s * aim
+      turn = r.turnRate * s * clamp(1.45 * s * r.driftSide + (a > 0 ? 0.45 : 1.2) * a, -1, 1.7) * Math.min(1, 0.4 + r.driftAge / 0.2) * fast
     }
     // the slide you see: the body swung round past its heading, by the drift's angle (more when steering into it)
     const side = r.drift ? clamp(r.driftSide / 0.6, -1, 1) : 0
