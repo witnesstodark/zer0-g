@@ -112,13 +112,44 @@ export default async function start(p0) {
     entityPilots.set(pid, p)
     return p
   }
-  let ownMachine = null
+  let ownMachine = null, ownEntity = null
   try {
     const e = await p0.entities?.mine?.()
+    ownEntity = e ?? null
     if (e) ownMachine = await entityMachine(e, p0.me.id, true)
     if (e && !ownMachine) p0.log('your machine does not pass the rules (or has no model): ask your agent to update it')
   } catch (err) { p0.log(`your machine did not load: ${err.message}`) }
   const entityHint = p0.entities?.kind && !ownMachine ? (p0.entities.hint || 'Ask your AI agent: make me a machine for zer0-g (Project 0)') : ''
+
+  // ---- the GALLERY: every player's machine. The game cannot ask Project 0 for the list from its sandbox, so it
+  // starts from a copy taken at publish (assets/gallery.json) and adds the machines of the players in the lot now
+  // (fresh from the server); pictures load when it opens, a machine's model when it is picked
+  const gallery = { entries: null }
+  async function galleryEntries() {
+    if (gallery.entries) return gallery.entries
+    const snap = await json('assets/gallery.json').catch(() => ({ machines: [] }))
+    const list = (snap.machines ?? []).filter(m => m?.data && validateMachine(m.data).ok).map(m => ({ ...m, owner: String(m.owner ?? 'PLAYER').toUpperCase().slice(0, 16), here: false }))
+    for (const pid of online.players ?? []) {
+      try {
+        const e = await p0.entities?.of?.(pid)
+        if (!e?.data || !e.model || !validateMachine(e.data).ok) continue
+        const k = list.findIndex(m => m.id === e.id)
+        const m = { id: e.id, owner: String(e.owner?.name ?? online.name(pid)).toUpperCase().slice(0, 16), name: e.name ?? e.data.name, data: e.data, model: e.model, picture: e.picture, updated: e.updated ?? 0, here: true }
+        if (k >= 0) list[k] = { ...list[k], ...m }; else list.push(m)
+      } catch { /* that player's machine stays as copied */ }
+    }
+    for (const m of list) m.mine = !!ownEntity && m.id === ownEntity.id
+    list.sort((a, b) => (b.mine - a.mine) || (b.here - a.here) || (b.updated ?? 0) - (a.updated ?? 0))
+    await Promise.all(list.map(async m => { if (m.picture) try { m.face = await textureAt(entityUrl(m.picture)) } catch { m.face = null } }))
+    gallery.entries = list
+    return list
+  }
+  /** A gallery machine's pilot entry, its model loaded (once) for the stand. */
+  async function galleryPilot(m) {
+    if (m.mine && ownMachine) return ownMachine
+    if (!m.pilot) m.pilot = await entityMachine({ id: m.id, name: m.name, data: m.data, model: m.model, picture: m.picture }, `gallery-${m.id}`, false)
+    return m.pilot
+  }
 
   // ---- the world
   // the first cup's three courses, then the other cups' (track4 to track9) when they are there
@@ -530,7 +561,7 @@ export default async function start(p0) {
       const healing = r.inPit && r.alive ? 1 : 0
       healK[i] += (healing - healK[i]) * Math.min(1, dt * (healing ? 8 : 3))
       const blink = r.ghost > 0 && Math.floor(shared.uTime.value * 14) % 2 === 0
-      fleet.set(i, M, !blink, r.flash + glow + (r.energy <= 0 ? 0.25 * (Math.sin(shared.uTime.value * 20) > 0 ? 1 : 0) : 0), healK[i])
+      fleet.set(i, M, !blink, r.flash + glow + (r.energy < 2 ? 0.25 * (Math.sin(shared.uTime.value * 20) > 0 ? 1 : 0) : 0), healK[i])
       // the flame and the glow
       REAR.copy(POS).addScaledVector(Z, -0.47 * SCALE).addScaledVector(Y, 0.1 * SCALE)
       ROAD.copy(f.p).addScaledVector(f.u, -r.h)
@@ -911,6 +942,8 @@ export default async function start(p0) {
     onNext: () => nextCupRace(),
     onLobby: () => backToLobby(),
     entityHint,
+    own: ownMachine, ownEntity,
+    gallery: { entries: galleryEntries, pilot: galleryPilot },
     onBack: () => toMenu(),
   })
   if (p0.table) menus.setTable(p0.table)
@@ -918,7 +951,12 @@ export default async function start(p0) {
   menus.online = online
   // the online hooks: the owner started it (pick a machine), the field is set (race), the lobby went away
   online.onPick = () => { if (state === 'menu' || state === 'title' || state === 'results') { state = 'menu'; menus.pickOnline() } }
-  online.onRace = L => { if (state === 'menu' || state === 'title' || state === 'results') startOnline(L) }
+  // the field is set with you in it: begin (once: it answers whether it did)
+  online.onRace = L => {
+    if (!(state === 'menu' || state === 'title' || state === 'results')) return false
+    startOnline(L).catch(err => { online.starting = false; p0.log(`the online race did not start: ${err.message}`) })
+    return true
+  }
   online.onOpen = () => { if (state === 'menu' && (menus.screen === 'machine' || menus.screen === 'online')) menus.open('lobby') }
   online.onGone = () => { if (state === 'menu' && (menus.screen === 'lobby' || menus.screen === 'machine')) { menus.flash = 'THE LOBBY CLOSED'; menus.open('online') } }
   p0.on('reward', r => { if (r.kind === 'score' && r.ok) { menus.weekly = { best: r.best, place: r.place }; menus.redraw() } })

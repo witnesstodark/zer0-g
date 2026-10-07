@@ -70,7 +70,7 @@ function sampleMachine(kind, id) {
   if (kind === 'stefan' || kind === 'served') return fetch(base + '/entity/stefan/entity.json').then(r => r.json()).then(entity)
   return entity({ name: 'TEST HOG', pilot: `PILOT ${id}`, stats: { body: 'C', boost: 'A', grip: 'C' }, weight: 1100, accent: '#ff2bd6', flame: '#ff7ad9', particle: 'snout' })
 }
-const PID = Number(params.get('pid') ?? 0)
+let PID = Number(params.get('pid') ?? 0)
 if (PID) {
   const bc = new BroadcastChannel('p0-room-383')
   const room = p0.room
@@ -100,7 +100,19 @@ if (PID) {
     else if (m.t === 'msg') emit('message', m.d, m.from)
     else if (m.t === 'input') { inputs[m.from] = m.d; lastInput = performance.now() }
     else if (m.t === 'tick') { room.tick = m.n; emit('tick', m.n, new Map()) }
+    else if (m.t === 'drop') drop(m.restart)
   }
+  // a dropped connection (a server update) for everyone in the session: each comes back with a new id into a new
+  // session; restart: its state is gone too. window.__drop(restart) from any tab
+  const drop = restart => {
+    bc.postMessage({ t: 'bye', from: PID })
+    PID += 100
+    p0.me.id = PID
+    ids.clear(); ids.add(PID); sync()
+    if (restart) for (const k of Object.keys(room.state)) delete room.state[k]
+    setTimeout(() => { bc.postMessage({ t: 'hello', from: PID, name: p0.me.name }); emit('reconnect') }, 300)
+  }
+  window.__drop = restart => { bc.postMessage({ t: 'drop', restart: !!restart }); drop(!!restart) }
   setInterval(() => {
     if (!room.isHost || performance.now() - lastInput > 5000) return
     room.tick++

@@ -1,5 +1,6 @@
 // A lobby left by an owner whose game stopped (two tabs sharing a session): A creates and starts it, then A's game
 // freezes (its tab stays in the lot); B, on the ONLINE RACE screen, must see it freed and be able to create one.
+// OPEN=1: A freezes in its open lobby (a tab in the background, waiting): the lobby must stay open.
 // node tools/sbx/stuckcheck.mjs
 import { createRequire } from 'node:module'
 import { mkdirSync } from 'node:fs'
@@ -26,7 +27,8 @@ for (const p of [A, B]) { for (let k = 0; k < 20 && (await p.evaluate(() => wind
 // A: ONLINE RACE, create, start
 await press(A, 'Space'); await press(A, 'ArrowRight'); await press(A, 'Space'); await wait(300)
 await press(A, 'Space'); await wait(300); await press(A, 'Space'); await wait(600)
-await press(A, 'Space'); await wait(800)
+if (!process.env.OPEN) await press(A, 'Space')
+await wait(800)
 console.log('A started:', await lobby(A), 'A on', await A.evaluate(() => window.__dbg.menus.screen))
 // A's game stops (its tab still in the lot)
 await A.evaluate(() => { window.__dbg.online.update = () => {} })

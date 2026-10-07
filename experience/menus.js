@@ -35,13 +35,31 @@ const ROW = { course: 0, cls: 1, cup: 2 }
 const GRID = { x: 40, y: 92, cols: 7, w: 104, h: 78, gap: 8 }   // 7 x 3: the eighteen, and a player's own
 const STAND = { x: 40, y: 362, w: 788, h: 300 }
 const SIDE = { x: 852, y: 92 }
+// the main menu: four tiles, the last one split in two (MY MACHINE over the GALLERY); keys move between them
+const TILES = [
+  { x: 170, y: 162, w: 462, h: 232 },   // GRAND PRIX
+  { x: 648, y: 162, w: 462, h: 232 },   // ONLINE RACE
+  { x: 170, y: 410, w: 462, h: 232 },   // TIME ATTACK
+  { x: 648, y: 410, w: 462, h: 108 },   // MY MACHINE
+  { x: 648, y: 534, w: 462, h: 108 },   // GALLERY
+]
+const TILE_NAV = [{ r: 1, d: 2 }, { l: 0, d: 3 }, { u: 0, r: 3 }, { u: 1, l: 2, d: 4 }, { u: 3, l: 2 }]
+// MY MACHINE: the stand and the card beside it; the GALLERY: cards on the left, the stand and the card on the right
+const GARAGE = { x: 40, y: 92, w: 780, h: 548 }
+const GAL = { x: 40, y: 92, cols: 3, rows: 2, w: 188, h: 262, gap: 14 }
+const GAL_STAND = { x: 664, y: 92, w: 576, h: 300 }
 // the buttons for the mouse: back (bottom left) and on (bottom right)
 const BACK = { x: 40, y: 663, w: 150, h: 40 }
 const GO = { x: 1050, y: 663, w: 190, h: 40 }
 
 export class Menus {
-  constructor({ overlay, font, thin, logo, icons, portraits, showroom, audio, tracks, onStart, onNext, onLobby, onBack, entityHint = '', faces = [] }) {
+  constructor({ overlay, font, thin, logo, icons, portraits, showroom, audio, tracks, onStart, onNext, onLobby, onBack, entityHint = '', faces = [], own = null, ownEntity = null, gallery = null }) {
+    this.own = own                  // your machine's pilot entry (or null)
+    this.ownEntity = ownEntity      // and its entity as Project 0 has it (version, when updated)
+    this.galleryApi = gallery       // { entries(), pilot(entry) }: the players' machines
+    this.gal = { list: null, at: 0, page: 0, loading: false, pilot: null, pics: new Map() }
     this.thin = thin ?? font        // the lighter weight: labels, small text, the keys
+    SWATCH_FONT = this.thin
     this.heroes = null              // the course cards' pictures (set once they are rendered)
     this.faces = faces             // the pilots' portraits as textures (drawn into the cup standings)
     this.cupT = 0                  // the cup standings' animation clock
@@ -56,7 +74,7 @@ export class Menus {
     this.onLobby = onLobby
     this.onStart = onStart
     this.onBack = onBack
-    this.sel = { mode: 0, machine: 0, engine: 0.5, cls: 1, course: 0, row: 1 }
+    this.sel = { mode: 0, tile: 0, machine: 0, engine: 0.5, cls: 1, course: 0, row: 1 }
     this.best = {}
     this.table = null
     this.online = null          // set by the game: the session's lobby
@@ -85,6 +103,61 @@ export class Menus {
     this.prompt = overlay.panel(700, 60, (c, text) => f.draw(c, text, 350, 30, 26, { color: CYAN, align: 'center', glow: 'rgba(41,211,255,0.8)' })).place('c', 0, 120)
     this.prompt.update('p', 'PRESS SPACE')
     this.hideAll()
+  }
+
+  /** MY MACHINE: yours on the stand, your pilot's portrait beside it. */
+  showGarage() {
+    if (!this.own) return
+    this.portraits.forEach((p, i) => { p.show(i === this.own.face); if (i === this.own.face) p.place('f', 852, 92) })
+    this.showroom.showPilot(this.own)
+  }
+
+  /** The players' machines, loaded once (from the menu on, in the background). */
+  loadGallery() {
+    const g = this.gal
+    if (g.list || g.loading || !this.galleryApi) return
+    g.loading = true
+    this.galleryApi.entries().then(list => { g.list = list; g.loading = false; if (this.screen === 'gallery') { this.showGallery(); this.pickGallery(g.at) } else this.redraw() })
+      .catch(() => { g.list = []; g.loading = false; this.redraw() })
+  }
+
+  /** The GALLERY: the players' machines as cards, the picked one on the stand. */
+  showGallery() {
+    const g = this.gal
+    this.loadGallery()
+    g.pics.forEach(p => p.show(false))
+    if (!g.list) { this.redraw(); return }
+    const per = GAL.cols * GAL.rows, first = g.page * per
+    g.list.slice(first, first + per).forEach((m, j) => {
+      if (!m.face) return
+      let pic = g.pics.get(m.id)
+      if (!pic) { pic = this.overlay.picture(m.face, GAL.w - 16, GAL.w - 16); g.pics.set(m.id, pic) }
+      const col = j % GAL.cols, row = Math.floor(j / GAL.cols)
+      pic.show(true)
+      pic.place('f', GAL.x + col * (GAL.w + GAL.gap) + 8, GAL.y + row * (GAL.h + GAL.gap) + 8)
+    })
+    if (g.pilot) this.showroom.showPilot(g.pilot)
+    else if (!g.loadingModel) this.pickGallery(g.at)
+    this.redraw()
+  }
+
+  /** Pick gallery card k: its machine (loaded once) onto the stand. */
+  pickGallery(k) {
+    const g = this.gal
+    if (!g.list?.length) return
+    k = Math.max(0, Math.min(g.list.length - 1, k))
+    const per = GAL.cols * GAL.rows, page = Math.floor(k / per)
+    g.at = k
+    if (page !== g.page) { g.page = page; this.showGallery() }
+    const m = g.list[k]
+    g.pilot = m.pilot ?? null
+    if (g.pilot) this.showroom.showPilot(g.pilot)
+    else {
+      g.loadingModel = m.id
+      this.galleryApi.pilot(m).then(p => { if (g.loadingModel === m.id) { g.loadingModel = null; g.pilot = p; if (p && this.screen === 'gallery') this.showroom.showPilot(p); this.redraw() } })
+        .catch(() => { g.loadingModel = null; this.redraw() })
+    }
+    this.redraw()
   }
 
   /** The course cards' pictures (canvases, by course). */
@@ -116,6 +189,7 @@ export class Menus {
     this.portraits.forEach(p => p.show(false))
     this.icons.forEach(p => p?.show(false))
     this.tiles.forEach(p => p.show(false))
+    this.gal.pics.forEach(p => p.show(false))
     this.badge?.show(false)
     if (this.online) this.online.watching = false
     this.screen = null
@@ -136,14 +210,21 @@ export class Menus {
     this.portraits.forEach(p => p.show(false))
     this.icons.forEach(p => p?.show(false))
     this.tiles.forEach(p => p.show(false))
+    this.gal.pics.forEach(p => p.show(false))
     this.logo.show(screen === 'title' || screen === 'mode')
     this.prompt.show(screen === 'title')
     if (screen === 'title') { this.logo.place('c', 0, -40, 1); this.prompt.update('p', 'PRESS SPACE') }
     if (screen === 'mode') {
-      this.logo.place('t', 0, 46, 0.5)
-      this.icons.forEach((ic, k) => { if (!ic) return; ic.show(true); ic.place('c', (k - 1) * 330, -30, 1) })
+      this.logo.place('t', 0, 20, 0.42)
+      this.icons.forEach((ic, k) => { if (!ic) return; const t = TILES[k]; ic.show(true); ic.place('f', t.x + 34, t.y + 51, 1) })
+      // your machine's picture in its tile
+      const own = PILOTS.findIndex(p => p.own)
+      if (own >= 0 && this.tiles[own]) { this.tiles[own].show(true); this.tiles[own].place('f', TILES[3].x + 22, TILES[3].y + 24) }
     }
     if (screen === 'machine') this.showMachine()
+    if (screen === 'garage') this.showGarage()
+    if (screen === 'gallery') this.showGallery()
+    if (screen === 'mode') this.loadGallery()
     this.redraw()
   }
 
@@ -171,7 +252,7 @@ export class Menus {
   }
 
   redraw() {
-    this.page.update(`${this.screen}|${JSON.stringify(this.sel)}|${JSON.stringify(this.best)}|${JSON.stringify(this.table ?? [])}|${this.dataKey ?? ''}|${this.lobbyKey()}|${JSON.stringify(this.weekly)}|${this.flash}|${this.hover}|${this.screen === 'cup' ? Math.round(this.cupT * 60) : 0}`, this.screen)
+    this.page.update(`${this.screen}|${JSON.stringify(this.sel)}|${JSON.stringify(this.best)}|${JSON.stringify(this.table ?? [])}|${this.dataKey ?? ''}|${this.lobbyKey()}|${JSON.stringify(this.weekly)}|${this.flash}|${this.hover}|${this.screen === 'cup' ? Math.round(this.cupT * 60) : 0}|${this.gal.at}|${this.gal.page}|${this.gal.list?.length ?? -1}|${this.gal.loadingModel ?? ''}|${!!this.gal.pilot}`, this.screen)
   }
 
   // ------------------------------------------------------------ the mouse
@@ -188,6 +269,8 @@ export class Menus {
     const go = (label, box = GO, size = 16) => B.push({ id: 'go', ...box, label, size, primary: true, act: () => this.move('Space') })
     const mode = MODES[s.mode]
     if (scr === 'mode') back('< TITLE')
+    else if (scr === 'garage') { back('< MENU'); if (this.own) go('RACE IT >') }
+    else if (scr === 'gallery') back('< MENU')
     else if (scr === 'machine') {
       if (this.onlinePick) { back('< LEAVE'); if (!this.locked) go('LOCK IN') }
       else { back('< BACK'); go('NEXT >') }
@@ -219,11 +302,16 @@ export class Menus {
     const add = (id, x, y, w, h, act, more = {}) => R.push({ id, x, y, w, h, act, ...more })
     if (scr === 'title') add('title', 0, 0, 1280, 720, () => this.move('Space'))
     if (scr === 'mode') {
-      // pointing at a card selects it, a click chooses it
-      for (let k = 0; k < 3; k++) {
-        add(`mode:${k}`, 640 + (k - 1) * 330 - 150, 200, 300, 300, () => { s.mode = k; this.move('Space') },
-          { over: () => { if (s.mode !== k) { s.mode = k; this.audio.sfx('gtr_move', { volume: 0.5 }) } } })
-      }
+      // pointing at a tile selects it, a click chooses it
+      TILES.forEach((t, k) => add(`mode:${k}`, t.x, t.y, t.w, t.h, () => { s.tile = k; this.move('Space') },
+        { over: () => { if (s.tile !== k) { s.tile = k; this.audio.sfx('gtr_move', { volume: 0.5 }) } } }))
+    }
+    if (scr === 'gallery' && this.gal.list) {
+      const per = GAL.cols * GAL.rows, first = this.gal.page * per
+      this.gal.list.slice(first, first + per).forEach((m, j) => {
+        const x = GAL.x + (j % GAL.cols) * (GAL.w + GAL.gap), y = GAL.y + Math.floor(j / GAL.cols) * (GAL.h + GAL.gap)
+        add(`gal:${first + j}`, x, y, GAL.w, GAL.h, () => { if (this.gal.at !== first + j) { this.audio.sfx('gtr_move', { volume: 0.6 }); this.pickGallery(first + j) } })
+      })
     }
     if (scr === 'machine' && !(this.onlinePick && this.locked)) {
       PILOTS.forEach((p, k) => {
@@ -392,18 +480,32 @@ export class Menus {
     if (back) {
       this.audio.sfx('gtr_back')
       if (scr === 'mode') this.open('title')
+      else if (scr === 'garage' || scr === 'gallery') this.open('mode')
       else if (scr === 'machine') this.open('mode')
       else if (scr === 'course') this.open(MODES[s.mode] === 'online' ? 'online' : 'machine')
       else if (scr === 'results' || scr === 'cup') this.onBack?.()
       return true
     }
     if (scr === 'mode') {
-      if (left || up) { s.mode = (s.mode + 2) % 3; moved = true }
-      if (right || down) { s.mode = (s.mode + 1) % 3; moved = true }
+      const nav = TILE_NAV[s.tile] ?? {}
+      const to = left ? nav.l : right ? nav.r : up ? nav.u : down ? nav.d : undefined
+      if (to !== undefined) { s.tile = to; moved = true }
       if (ok) {
         this.audio.sfx('gtr_select')
+        if (s.tile === 3) { this.open('garage'); return true }
+        if (s.tile === 4) { this.open('gallery'); return true }
+        s.mode = s.tile
         if (MODES[s.mode] === 'online') { this.open('online'); return true }
         this.audio.voice('select'); this.open('machine'); return true
+      }
+    } else if (scr === 'garage') {
+      // race it: the Grand Prix with your machine picked
+      if (ok && this.own) { this.audio.sfx('gtr_select'); s.mode = 0; s.tile = 0; s.machine = PILOTS.indexOf(this.own); this.open('machine'); return true }
+    } else if (scr === 'gallery') {
+      const g = this.gal
+      if (g.list?.length) {
+        const d = left ? -1 : right ? 1 : up ? -GAL.cols : down ? GAL.cols : 0
+        if (d) { const k = Math.max(0, Math.min(g.list.length - 1, g.at + d)); if (k !== g.at) { this.pickGallery(k); moved = true } }
       }
     } else if (scr === 'machine') {
       const n = PILOTS.length, cols = GRID.cols
@@ -463,7 +565,7 @@ export class Menus {
     this.blinkT += dt
     if (['mode', 'machine', 'lobby', 'online'].includes(this.screen) && Math.floor(this.blinkT * 4) !== Math.floor((this.blinkT - dt) * 4)) this.redraw()
     if (this.screen === 'title') this.prompt.show(Math.floor(this.blinkT * 1.6) % 2 === 0)
-    if (this.screen === 'machine') this.showroom.update(dt)
+    if (this.screen === 'machine' || this.screen === 'garage' || this.screen === 'gallery') this.showroom.update(dt)
     if (this.screen === 'cup' && this.cupT < CUP_ANIM) {
       const was = this.cupT
       this.cupT = Math.min(CUP_ANIM, this.cupT + dt)
@@ -480,14 +582,16 @@ export class Menus {
 
   /** The chosen machine turning on its stand, under the grid. */
   renderShowroom(renderer) {
-    if (this.screen !== 'machine') return
+    const R = this.screen === 'machine' ? STAND : this.screen === 'garage' && this.own ? GARAGE : this.screen === 'gallery' && this.gal.pilot && !this.gal.loadingModel ? GAL_STAND : null
+    if (!R) return
     const o = this.overlay
     const u = o.unit
     const left = (o.width - 1280 * u) / 2, top = (o.height - 720 * u) / 2
-    const x = left + STAND.x * u, w = STAND.w * u, h = STAND.h * u
-    const y = o.height - (top + STAND.y * u) - h
+    const x = left + R.x * u, w = R.w * u, h = R.h * u
+    const y = o.height - (top + R.y * u) - h
     const cam = this.showroom.camera
     cam.aspect = w / h
+    cam.fov = R.h < 400 ? 22 : 30
     cam.updateProjectionMatrix()
     renderer.setScissorTest(true)
     renderer.setScissor(x, y, w, h)
@@ -548,20 +652,115 @@ export class Menus {
     }
     if (screen === 'mode') {
       const inside = this.online?.players.length ?? 1
-      const cards = [['GRAND PRIX', 'THREE CUPS OF THREE RACES', C_CYAN], ['ONLINE RACE', `WITH THE OTHERS HERE  /  ${inside} INSIDE`, C_PINK], ['TIME ATTACK', 'ONE COURSE, AGAINST THE CLOCK', C_GOLD]]
-      cards.forEach(([name, line, accent], k) => {
-        const cx = 640 + (k - 1) * 330, on = s.mode === k, x = cx - 150, y = 200, w = 300, h = 300
-        glass(c, x, y, w, h, { on, hover: this.hover === `mode:${k}`, accent, k: 14 })
+      const n = this.gal.list?.length
+      const tiles = [
+        ['GRAND PRIX', 'THREE CUPS OF THREE RACES', 'THE CITY  /  SPACE  /  THE DESERT', C_CYAN],
+        ['ONLINE RACE', 'RACE THE OTHERS IN THE LOT', `${inside} INSIDE NOW`, C_PINK],
+        ['TIME ATTACK', 'ONE COURSE, AGAINST THE CLOCK', 'BEAT YOUR BEST TIME', C_GOLD],
+        ['MY MACHINE', this.own ? this.own.name : 'MAKE ONE WITH YOUR AI AGENT', '', '#ff8ae6'],
+        ['GALLERY', `${n ? `${n} ` : ''}MACHINES BY PLAYERS`, '', '#7dffb0'],
+      ]
+      tiles.forEach(([name, line, more, accent], k) => {
+        const b = TILES[k], on = s.tile === k, small = b.h < 150
+        glass(c, b.x, b.y, b.w, b.h, { on, hover: this.hover === `mode:${k}`, accent, k: small ? 10 : 14 })
         if (on) {
-          brackets(c, x, y, w, h, accent)
-          c.save(); c.shadowColor = accent; c.shadowBlur = 12; c.fillStyle = accent; c.fillRect(x + 40, y + h - 3, w - 80, 2); c.restore()
+          brackets(c, b.x, b.y, b.w, b.h, accent, small ? 10 : 14)
+          c.save(); c.shadowColor = accent; c.shadowBlur = 12; c.fillStyle = accent; c.fillRect(b.x + 30, b.y + b.h - 3, b.w - 60, 2); c.restore()
         }
-        if (!this.icons[k]) globe(c, cx, 330, 54, on)
-        f.draw(c, name, cx, 438, 24, { color: on ? '#ffffff' : '#9fb6cc', align: 'center', skew: 0.12, outline: false, glow: on ? accent : null, glowBlur: 10 })
-        t.draw(c, line, cx, 468, 10.5, { color: on ? accent : MUTED, align: 'center', skew: 0, spacing: 0.16, outline: false })
+        if (!small) {
+          if (k === 1 && !this.icons[1]) globe(c, b.x + 99, b.y + 116, 52, on)
+          f.draw(c, name, b.x + 196, b.y + 98, 26, { color: on ? '#ffffff' : '#9fb6cc', skew: 0.12, outline: false, glow: on ? accent : null, glowBlur: 10 })
+          t.draw(c, line, b.x + 198, b.y + 132, 10.5, { color: on ? accent : MUTED, skew: 0, spacing: 0.16, outline: false })
+          t.draw(c, more, b.x + 198, b.y + 154, 9, { color: FAINT, skew: 0, spacing: 0.18, outline: false })
+        } else {
+          if (k === 3 && !this.own) plusMark(c, b.x + 70, b.y + b.h / 2, on)
+          if (k === 4) cardsMark(c, b.x + 70, b.y + b.h / 2, on)
+          f.draw(c, name, b.x + 150, b.y + 44, 20, { color: on ? '#ffffff' : '#9fb6cc', skew: 0.12, outline: false, glow: on ? accent : null, glowBlur: 8 })
+          t.draw(c, line, b.x + 151, b.y + 72, 9.5, { color: on ? accent : MUTED, skew: 0, spacing: 0.16, outline: false })
+        }
       })
-      if (this.flash) t.draw(c, this.flash, 640, 560, 14, { color: '#ff6b7d', align: 'center', skew: 0, spacing: 0.1, outline: false })
-      hint('LEFT / RIGHT: SELECT  ·  SPACE: CHOOSE  ·  BACKSPACE: TITLE')
+      if (this.flash) t.draw(c, this.flash, 640, 148, 12, { color: '#ff6b7d', align: 'center', skew: 0, spacing: 0.1, outline: false })
+      hint('ARROWS: SELECT  ·  SPACE: CHOOSE  ·  BACKSPACE: TITLE')
+      return
+    }
+    if (screen === 'garage') {
+      this.header(c, 'MY MACHINE', this.own ? 'MADE BY YOUR AI AGENT, YOURS IN EVERY MODE' : 'NONE YET', '#ff8ae6')
+      if (!this.own) {
+        glass(c, 240, 150, 800, 440, { on: true, accent: '#ff8ae6', k: 16 })
+        plusMark(c, 640, 230, true)
+        f.draw(c, 'NO MACHINE OF YOUR OWN YET', 640, 300, 24, { color: '#ffffff', align: 'center', skew: 0.12, outline: false })
+        const steps = [
+          ['1', 'ASK YOUR AI AGENT: "MAKE ME A MACHINE FOR ZER0-G (PROJECT 0)"'],
+          ['2', 'IT DESIGNS ONE WITH YOU: A NAME, A PILOT, STATS, COLOURS, A 3D MODEL'],
+          ['3', 'IT SENDS IT TO PROJECT 0; ONCE CHECKED IT RACES HERE IN EVERY MODE'],
+        ]
+        steps.forEach(([n, line], k) => {
+          const y = 356 + k * 42
+          c.save(); roundRect(c, 300, y - 14, 28, 28, 6); c.strokeStyle = '#ff8ae6'; c.lineWidth = 1.2; c.stroke(); c.restore()
+          t.draw(c, n, 314, y + 1, 12, { color: '#ff8ae6', align: 'center', skew: 0, outline: false })
+          t.draw(c, line, 346, y + 1, 11, { color: INK, skew: 0, spacing: 0.1, outline: false })
+        })
+        t.draw(c, 'THE GUIDE FOR AGENTS:  PROJECT0.CITY/API/GAMES/ZER0-G/SKILL.MD', 640, 540, 10, { color: MUTED, align: 'center', skew: 0, spacing: 0.14, outline: false })
+        hint('BACKSPACE: MENU')
+        return
+      }
+      const p = this.own, acc = hex(p.accent)
+      c.save(); cut(c, GARAGE.x, GARAGE.y, GARAGE.w, GARAGE.h, 14)
+      const g = c.createLinearGradient(0, GARAGE.y, 0, GARAGE.y + GARAGE.h); g.addColorStop(0, 'rgba(4,6,20,0.94)'); g.addColorStop(1, 'rgba(14,8,30,0.96)')
+      c.fillStyle = g; c.fill(); c.strokeStyle = 'rgba(255,138,230,0.3)'; c.lineWidth = 1; c.stroke(); c.restore()
+      this.machineCard(c, p, 852, acc)
+      const e = this.ownEntity
+      if (e) t.draw(c, `VERSION ${e.version ?? 1}${e.updated ? `  /  UPDATED ${new Date(e.updated).toISOString().slice(0, 10)}` : ''}`, 852, 600, 9.5, { color: FAINT, skew: 0, spacing: 0.16, outline: false })
+      t.draw(c, 'TO CHANGE IT, ASK YOUR AGENT TO UPDATE YOUR ZER0-G MACHINE', 852, 622, 9, { color: FAINT, skew: 0, spacing: 0.12, outline: false })
+      hint('SPACE: RACE IT  ·  BACKSPACE: MENU')
+      return
+    }
+    if (screen === 'gallery') {
+      const gl = this.gal, list = gl.list
+      this.header(c, 'GALLERY', list ? `${list.length} MACHINE${list.length === 1 ? '' : 'S'} BY PLAYERS` : 'LOADING', '#7dffb0')
+      if (!list) { t.draw(c, 'LOADING THE PLAYERS\' MACHINES...', 640, 360, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.2, outline: false }); hint('BACKSPACE: MENU'); return }
+      if (!list.length) { t.draw(c, 'NO MACHINES YET: BE THE FIRST (MY MACHINE SAYS HOW)', 640, 360, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.16, outline: false }); hint('BACKSPACE: MENU'); return }
+      const per = GAL.cols * GAL.rows, first = gl.page * per
+      list.slice(first, first + per).forEach((m, j) => {
+        const k = first + j, x = GAL.x + (j % GAL.cols) * (GAL.w + GAL.gap), y = GAL.y + Math.floor(j / GAL.cols) * (GAL.h + GAL.gap)
+        const on = k === gl.at, acc = '#' + String(m.data.accent).slice(1)
+        glass(c, x, y, GAL.w, GAL.h, { on, hover: this.hover === `gal:${k}`, accent: acc, k: 10, glow: on })
+        if (!m.face) { c.fillStyle = 'rgba(20,24,50,0.8)'; c.fillRect(x + 8, y + 8, GAL.w - 16, GAL.w - 16) }
+        f.draw(c, String(m.name).slice(0, 15), x + 12, y + GAL.w + 12, 13, { color: on ? '#ffffff' : '#c8d8e8', skew: 0.12, outline: false })
+        t.draw(c, `BY ${m.owner}`, x + 12, y + GAL.w + 34, 9, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
+        // under the picture (the pictures are drawn over the page): yours, or here in the lot now
+        if (m.mine || m.here) {
+          const tag = m.mine ? 'YOURS' : 'IN THE LOT', tc = m.mine ? '#ff8ae6' : '#7dffb0', tw = t.measure(tag, 8, 0.2) + 14
+          c.save(); roundRect(c, x + GAL.w - 12 - tw, y + GAL.w + 25, tw, 17, 4); c.fillStyle = 'rgba(4,6,18,0.75)'; c.fill(); c.strokeStyle = tc; c.lineWidth = 1; c.stroke(); c.restore()
+          t.draw(c, tag, x + GAL.w - 12 - tw / 2, y + GAL.w + 34, 8, { color: tc, align: 'center', skew: 0, spacing: 0.2, outline: false })
+        }
+        if (on) brackets(c, x, y, GAL.w, GAL.h, acc, 10, 3)
+      })
+      const pages = Math.ceil(list.length / per)
+      if (pages > 1) t.draw(c, `PAGE ${gl.page + 1} / ${pages}`, GAL.x + 3 * (GAL.w + GAL.gap) - GAL.gap, 640, 9.5, { color: MUTED, align: 'right', skew: 0, spacing: 0.2, outline: false })
+      // the stand and the picked one's card
+      const m = list[gl.at]
+      c.save(); cut(c, GAL_STAND.x, GAL_STAND.y, GAL_STAND.w, GAL_STAND.h, 12)
+      const gr = c.createLinearGradient(0, GAL_STAND.y, 0, GAL_STAND.y + GAL_STAND.h); gr.addColorStop(0, 'rgba(4,6,20,0.94)'); gr.addColorStop(1, 'rgba(8,16,22,0.96)')
+      c.fillStyle = gr; c.fill(); c.strokeStyle = 'rgba(125,255,176,0.3)'; c.lineWidth = 1; c.stroke(); c.restore()
+      if (gl.loadingModel) t.draw(c, 'BRINGING IT OUT...', GAL_STAND.x + GAL_STAND.w / 2, GAL_STAND.y + GAL_STAND.h / 2, 11, { color: MUTED, align: 'center', skew: 0, spacing: 0.24, outline: false })
+      if (m) {
+        const d = m.data, acc = '#' + String(d.accent).slice(1), X = GAL_STAND.x, Y = GAL_STAND.y + GAL_STAND.h + 28
+        f.draw(c, String(m.name).slice(0, 22), X, Y, 22, { color: '#ffffff', skew: 0.12, outline: false, glow: acc, glowBlur: 10 })
+        t.draw(c, `PILOT ${String(d.pilot).toUpperCase()}  /  MADE BY ${m.owner}'S AGENT`, X, Y + 30, 10, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
+        ;[['BODY', d.stats.body], ['BOOST', d.stats.boost], ['GRIP', d.stats.grip]].forEach(([name, gr2], k) => {
+          const yy = Y + 64 + k * 30
+          t.draw(c, name, X, yy, 10, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
+          slantBar(c, X + 64, yy - 5, 200, 9, GRADE[gr2], gr2 <= 'B' ? '#29d3ff' : gr2 === 'C' ? '#ffd23a' : '#ff6b6b', 'rgba(10,14,40,0.75)', 'rgba(130,190,240,0.35)')
+          f.draw(c, gr2, X + 284, yy, 15, { color: gr2 === 'A' ? C_GOLD : '#ffffff', skew: 0.1, outline: false })
+        })
+        const R = X + 330
+        t.draw(c, `WEIGHT  ${d.weight} KG`, R, Y + 64, 10, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
+        t.draw(c, `NITRO  ${String(d.particle).toUpperCase()}S`, R, Y + 94, 10, { color: MUTED, skew: 0, spacing: 0.16, outline: false })
+        swatch(c, R, Y + 112, d.accent, 'ACCENT'); swatch(c, R + 120, Y + 112, d.flame, 'FLAME')
+        if (d.description) t.draw(c, String(d.description).toUpperCase().slice(0, 64) + (String(d.description).length > 64 ? '...' : ''), X, Y + 170, 8.5, { color: FAINT, skew: 0, spacing: 0.08, outline: false })
+      }
+      hint('ARROWS: PICK  ·  BACKSPACE: MENU')
       return
     }
     if (screen === 'machine') {
@@ -670,6 +869,7 @@ export class Menus {
         c.fillStyle = mine ? 'rgba(255,43,214,0.12)' : 'rgba(130,170,220,0.05)'; c.fillRect(360, y - 13, 560, 26)
         f.draw(c, String(m.n || 'PLAYER').slice(0, 16), 380, y, 15, { color: mine ? '#ff8ae6' : '#ffffff', skew: 0.1, outline: false })
         if (owner) t.draw(c, 'OWNER', 720, y, 10, { color: C_GOLD, skew: 0, spacing: 0.2, outline: false })
+        if (m.away) t.draw(c, 'AWAY', owner ? 790 : 720, y, 10, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
         if (L.phase === 'pick') t.draw(c, m.ok ? 'READY' : 'PICKING', 900, y, 10, { color: m.ok ? C_CYAN : MUTED, align: 'right', skew: 0, spacing: 0.2, outline: false })
       })
       if (L.phase === 'open') {
@@ -829,6 +1029,23 @@ export class Menus {
     }
   }
 
+  /** A machine's card beside its stand: pilot, name, stats, weight, nitro particles and colours (x: its left). */
+  machineCard(c, p, X, acc) {
+    const f = this.font, t = this.thin
+    c.save(); c.strokeStyle = acc; c.lineWidth = 1.5; c.shadowColor = acc; c.shadowBlur = 10; c.strokeRect(X - 1.5, 92 - 1.5, 203, 203); c.restore()
+    t.draw(c, p.pilot, X, 320, 12, { color: MUTED, skew: 0, spacing: 0.24, outline: false })
+    f.draw(c, p.name, X, 348, 22, { color: '#ffffff', skew: 0.12, outline: false, glow: acc, glowBlur: 10 })
+    ;[['BODY', p.body], ['BOOST', p.boost], ['GRIP', p.grip]].forEach(([name, gr], k) => {
+      const y = 392 + k * 36
+      t.draw(c, name, X, y, 11, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
+      slantBar(c, X + 70, y - 5, 236, 10, GRADE[gr], gr <= 'B' ? '#29d3ff' : gr === 'C' ? '#ffd23a' : '#ff6b6b', 'rgba(10,14,40,0.75)', 'rgba(130,190,240,0.35)')
+      f.draw(c, gr, X + 334, y, 18, { color: gr === 'A' ? C_GOLD : '#ffffff', skew: 0.1, outline: false })
+    })
+    t.draw(c, `WEIGHT  ${p.weight} KG`, X, 500, 10.5, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
+    if (p.particle) t.draw(c, `NITRO  ${String(p.particle).toUpperCase()}S`, X, 526, 10.5, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
+    swatch(c, X, 548, hex(p.accent), 'ACCENT'); swatch(c, X + 120, 548, hex(p.flame), 'FLAME')
+  }
+
   /** A pilot's portrait drawn into a canvas (the bitmaps are stored upside down, for the GPU). */
   drawFace(c, face, accent, x, y, s) {
     const img = this.faces[face]?.image
@@ -985,6 +1202,32 @@ function brackets(c, x, y, w, h, color, len = 14, pad = 5) {
   c.moveTo(X1, Y1 - len); c.lineTo(X1, Y1); c.lineTo(X1 - len, Y1)
   c.moveTo(X0 + len, Y1); c.lineTo(X0, Y1); c.lineTo(X0, Y1 - len)
   c.stroke(); c.restore()
+}
+
+/** A colour chip with its name (css colour or #rrggbb). */
+function swatch(c, x, y, color, label) {
+  c.save(); roundRect(c, x, y, 22, 22, 5); c.fillStyle = color; c.shadowColor = color; c.shadowBlur = 8; c.fill(); c.restore()
+  SWATCH_FONT?.draw(c, label, x + 30, y + 12, 9, { color: MUTED, skew: 0, spacing: 0.2, outline: false })
+}
+let SWATCH_FONT = null
+
+/** MY MACHINE's mark when there is none yet: a plus in a ring. */
+function plusMark(c, x, y, on) {
+  c.save(); c.strokeStyle = '#ff8ae6'; c.lineWidth = 2.5; c.shadowColor = '#ff2bd6'; c.shadowBlur = on ? 14 : 6; c.globalAlpha = on ? 1 : 0.7
+  c.beginPath(); c.arc(x, y, 30, 0, Math.PI * 2); c.stroke()
+  c.beginPath(); c.moveTo(x - 13, y); c.lineTo(x + 13, y); c.moveTo(x, y - 13); c.lineTo(x, y + 13); c.stroke(); c.restore()
+}
+
+/** The GALLERY's mark: three cards fanned out, a star on the front one. */
+function cardsMark(c, x, y, on) {
+  c.save(); c.globalAlpha = on ? 1 : 0.75; c.lineWidth = 2
+  ;[[-16, -0.26, '#29d3ff'], [16, 0.26, '#ff2bd6'], [0, 0, '#7dffb0']].forEach(([dx, a, col]) => {
+    c.save(); c.translate(x + dx, y); c.rotate(a); roundRect(c, -17, -24, 34, 48, 5)
+    c.fillStyle = 'rgba(6,10,26,0.95)'; c.fill(); c.strokeStyle = col; c.shadowColor = col; c.shadowBlur = on ? 10 : 4; c.stroke(); c.restore()
+  })
+  c.beginPath()
+  for (let i = 0; i < 10; i++) { const r = i % 2 ? 5 : 11, an = -Math.PI / 2 + i * Math.PI / 5; c.lineTo(x + Math.cos(an) * r, y + Math.sin(an) * r) }
+  c.closePath(); c.fillStyle = '#ffffff'; c.fill(); c.restore()
 }
 
 /** ONLINE RACE's mark: a globe of neon lines with a machine's orbit round it. */

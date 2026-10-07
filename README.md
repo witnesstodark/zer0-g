@@ -14,6 +14,7 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 - **Three machines a race:** hit again with no energy left, or off the course with little left, and your machine blows apart; the spare comes out a couple of seconds later with full energy. The third wreck puts you out.
 - **Drift and nitro:** a drift fills the nitro gauge and gives a turbo when you let go; flying clean at speed builds flow, up to a quarter more top speed.
 - A weekly table of the best cup times, shown on the title screen.
+- **MY MACHINE and the GALLERY** on the main menu: your own machine on its stand, and every player's machine with its pilot (the list is copied at each publish by `tools/gallery_snapshot.mjs`, since the sandbox cannot ask the server for it, and joined by the machines of whoever is in the lot).
 
 | | |
 |---|---|

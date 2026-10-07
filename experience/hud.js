@@ -4,7 +4,7 @@
 // in the middle.
 
 import { fmtTime, ordinal, slantBar, roundRect } from './ui.js'
-import { KMH, NITRO_CELL, LIVES, driftTier } from './race.js'
+import { KMH, NITRO_CELL, LIVES, EMPTY, driftTier } from './race.js'
 
 const CYAN = ['#ffffff', '#9ff3ff', '#29d3ff']
 const GOLD = ['#fffbe0', '#ffd66b', '#ff9a1f']
@@ -51,7 +51,7 @@ export class Hud {
       }
       const col = me.inPit ? (blink ? '#7dffb0' : '#29ffd0') : k > 0.5 ? '#29d3ff' : k > 0.25 ? '#ffd23a' : (blink ? '#ff1f3d' : '#7a0a1a')
       slantBar(c, 30, 34, 370, 26, k, col)
-      if (me.energy <= 0) f.draw(c, 'DANGER', 215, 47, 20, { color: blink ? RED : '#ffffff', align: 'center' })
+      if (me.energy < EMPTY) f.draw(c, 'DANGER', 215, 47, 20, { color: blink ? RED : '#ffffff', align: 'center' })
       // the nitro: four cells, a full one glows
       const cells = me.nitro / NITRO_CELL
       for (let i = 0; i < 4; i++) {

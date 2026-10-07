@@ -619,27 +619,15 @@ export class Showroom {
     key.position.set(2, 3, 2)
     this.scene.add(key)
     this.envMap = envMap
-    this.items = models.map(m => {
-      const mat = neon(m.material)
-      each(mat, x => { x.envMap = envMap })
-      const geo = m.geometry.clone()
-      geo.setAttribute('aAccent', new THREE.InstancedBufferAttribute(new Float32Array([...new THREE.Color(m.accent).toArray(), 0]), 4))
-      geo.setAttribute('aHue', new THREE.InstancedBufferAttribute(new Float32Array([0, 1]), 2))
-      geo.setAttribute('aHeal', new THREE.InstancedBufferAttribute(new Float32Array([0]), 1))
-      const mesh = new THREE.InstancedMesh(geo, mat, 1)
-      mesh.setMatrixAt(0, new THREE.Matrix4())
-      mesh.visible = false
-      mesh.frustumCulled = false
-      this.scene.add(mesh)
-      return mesh
-    })
+    this.models = models
+    this.items = []
+    models.forEach((m, k) => this.ensure(k))
     // the turntable: a ring of light
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.6, 64), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 1.6, 2.4), side: THREE.DoubleSide }))
     ring.rotation.x = -Math.PI / 2
     ring.position.y = -0.05
     this.ring = ring
     this.scene.add(ring)
-    this.models = models
     this.fx = new ThrusterFx(1)
     this.air = new Airflow(1)
     this.scene.add(this.fx.flames, this.fx.cores, this.air.mesh)
@@ -649,10 +637,32 @@ export class Showroom {
     this.time = 0
   }
 
+  /** The stand's copy of model k (made when first needed: a player's machine can arrive later). */
+  ensure(k) {
+    if (this.items[k]) return this.items[k]
+    const m = this.models[k]
+    const mat = neon(m.material)
+    each(mat, x => { x.envMap = this.envMap })
+    const geo = m.geometry.clone()
+    geo.setAttribute('aAccent', new THREE.InstancedBufferAttribute(new Float32Array([...new THREE.Color(m.accent).toArray(), 0]), 4))
+    geo.setAttribute('aHue', new THREE.InstancedBufferAttribute(new Float32Array([0, 1]), 2))
+    geo.setAttribute('aHeal', new THREE.InstancedBufferAttribute(new Float32Array([0]), 1))
+    const mesh = new THREE.InstancedMesh(geo, mat, 1)
+    mesh.setMatrixAt(0, new THREE.Matrix4())
+    mesh.visible = false
+    mesh.frustumCulled = false
+    this.scene.add(mesh)
+    this.items[k] = mesh
+    return mesh
+  }
+
   /** Show pilot i's machine (its model in their livery). */
-  show(i) {
-    const p = PILOTS[i]
-    this.items.forEach((m, k) => { m.visible = k === p.model })
+  show(i) { this.showPilot(PILOTS[i]) }
+
+  /** Show a pilot entry's machine (one of the eighteen, yours, or one from the gallery). */
+  showPilot(p) {
+    this.ensure(p.model)
+    this.items.forEach((m, k) => { if (m) m.visible = k === p.model })
     this.current = p.model
     const geo = this.items[p.model].geometry
     geo.attributes.aHue.setXY(0, p.hue, p.sat); geo.attributes.aHue.needsUpdate = true

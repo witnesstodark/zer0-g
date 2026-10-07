@@ -32,6 +32,7 @@ export const NITRO_CELL = 25, NITRO_MAX = 100
 export const LIVES = 3
 const WRECK_T = 2.4
 const DOOM = 30                       // energy under which a fall off the course wrecks the machine
+export const EMPTY = 2                // energy under which the machine is running on nothing (DANGER)
 const FALL_COST = 18                  // energy a fall off the course costs (with the spare: none)
 
 /** The turbo a drift has earned so far: 0 none, 1 blue, 2 orange, 3 pink. */
@@ -290,7 +291,7 @@ export class Race {
     if (r.boostT > 0) vmax = vmax * (stack >= 3 ? 1.64 : 1.32 + 0.12 * (stack - 1)) + r.boostG * 0.9 * U * V
     if (onDash) vmax *= 1.3
     if (r.turbo > 0) vmax *= 1.15
-    if (r.energy <= 0) vmax *= 0.97
+    if (r.energy < EMPTY) vmax *= 0.97
     vmax *= 1 + 0.25 * r.flow
     if (!air && !r.finished) {
       if (inp.throttle) {
@@ -662,7 +663,8 @@ export class Race {
     r.flowFull = r.flow >= 1
     if (flowWas > 0.4 && r.flow < 0.1) this.events('flowLost', r)
     r.flash = Math.max(r.flash, Math.min(1, amount / 12))
-    if (was <= 0 && amount > 0.5) this.wreck(r, 'hit')
+    // no energy left (it creeps back up, so: under 2): any knock or scrape blows it apart
+    if (was < EMPTY && amount > 0.05) this.wreck(r, 'hit')
     else if (r.energy <= 0 && was > 0) this.events('empty', r)
   }
 

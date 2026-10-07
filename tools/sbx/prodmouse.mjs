@@ -26,8 +26,8 @@ const move = async (x, y) => { await page.mouse.move(...at(x, y), { steps: 4 });
 const click = async (x, y) => { await move(x, y); await page.mouse.click(...at(x, y)); await wait(600) }
 await page.mouse.click(W / 2, H / 2); await wait(800); await page.mouse.click(W / 2, H / 2); await wait(1500)
 await shot('title')
-await click(640, 400); await move(970, 350); await shot('mode-hover-ta')
-await click(970, 350); await click(498, 217); await move(1125, 687); await shot('machine-clicked-hover-next')
+await click(640, 400); await move(400, 520); await shot('mode-hover-ta')
+await click(400, 520); await click(498, 217); await move(1125, 687); await shot('machine-clicked-hover-next')
 await click(1125, 687); await move(1050, 300); await shot('course-hover')
 console.log('version', VER)
 await browser.close()
