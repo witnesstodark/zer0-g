@@ -30,6 +30,7 @@ export const NITRO_CELL = 25, NITRO_MAX = 100
 // wrecks: a machine hit again with its energy gone, or falling off the course with little left, blows apart; the
 // spare is on the road WRECK_T seconds later with full energy. LIVES machines a race: the last one wrecked is out
 export const LIVES = 3
+const DRUM_TOL = 1.0                  // metres beyond the road's edge a drum's exit forgives (and draws you in from)
 const WRECK_T = 2.4
 const DOOM = 30                       // energy under which a fall off the course wrecks the machine
 export const EMPTY = 2                // energy under which the machine is running on nothing (DANGER)
@@ -231,6 +232,7 @@ export class Race {
         if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air) {
           r.drift = dir
           r.driftSide = dir * 0.4                       // the angle: -1 hard left .. 1 hard right
+          r.driftAge = 0
           r.driftStraight = 0
           r.driftT = 0
           r.psi += r.drift * 0.02                       // the kick: the tail steps out (the body shows the rest)
@@ -250,7 +252,7 @@ export class Race {
       // and on through straight to the other side); letting go (or steering less) holds it where it is
       if (Math.abs(aim) > 0.08) {
         const d = aim - r.driftSide
-        if (Math.sign(aim) !== Math.sign(r.driftSide) || Math.abs(aim) > Math.abs(r.driftSide)) r.driftSide += Math.sign(d) * Math.min(Math.abs(d), 3.2 * dt)
+        if (Math.sign(aim) !== Math.sign(r.driftSide) || Math.abs(aim) > Math.abs(r.driftSide)) r.driftSide += Math.sign(d) * Math.min(Math.abs(d), 5 * dt)
       }
       // across to the other side: a hop as the tail swings over
       if (Math.abs(r.driftSide) > 0.15 && Math.sign(r.driftSide) !== r.drift) { r.drift = Math.sign(r.driftSide); r.hop = 0.12; this.events('drift', r) }
@@ -268,9 +270,15 @@ export class Race {
         this.events('driftEnd', r)
         break turbo
       }
-      // the drift's own turn, from its angle and a touch of the steering now (it comes in over a quarter of a
-      // second, so starting one never throws you aside)
-      turn = r.turnRate * (0.6 * r.driftSide + 0.12 * aim) * Math.min(1, 0.3 + r.driftT / 0.25)
+      // the drift's turn (round 22, Stefan: "it pulls me into the wall at the start and I cannot steer off one"):
+      // a gentle arc from its angle, and most of it from the steering now, at once: into the slide turns tighter
+      // than a plain turn, out of it eases off and even turns away, so a wall can be left. It comes in over a fifth
+      // of a second (by the drift's own age: one taken in a nitro, whose bonus clock stands still, turns too), and
+      // at nitro speeds it turns more, so the line through a bend holds
+      // (measured from the drift's own side, so a left drift turns exactly as a right one does)
+      r.driftAge = (r.driftAge ?? 0) + dt
+      const fast = clamp(r.sp / r.vmax, 1, 1.4), s = r.drift
+      turn = r.turnRate * s * clamp(s * (0.35 * r.driftSide + 1.25 * aim), -1, 1.7) * Math.min(1, 0.4 + r.driftAge / 0.2) * fast
     }
     // the slide you see: the body swung round past its heading, by the drift's angle (more when steering into it)
     const side = r.drift ? clamp(r.driftSide / 0.6, -1, 1) : 0
@@ -288,14 +296,14 @@ export class Race {
     // grip pulls the velocity round to the heading; a slide costs speed (a drift slides on purpose and
     // costs little)
     if (!air) {
-      const grip = r.drift ? r.gripRate * 0.8 : r.gripRate * (r.lean !== 0 ? 1 - Math.abs(r.lean) * 0.45 : 1)
+      const grip = r.drift ? r.gripRate * 0.95 : r.gripRate * (r.lean !== 0 ? 1 - Math.abs(r.lean) * 0.45 : 1)
       const slip = wrapAngle(r.psi - r.phi)
       r.phi += slip * (1 - Math.exp(-grip * dt))
       r.sp *= 1 - Math.min(0.5, Math.abs(slip) * (r.drift ? 0.15 : 0.9) * dt)
     }
     // too far from the road's direction: the machine is turned back (it is still a race, not a stunt; a
     // drift's path stays within a gentle angle of the road, its body shows the slide)
-    const psiMax = r.drift ? 0.65 : 1.2
+    const psiMax = r.drift ? 0.9 : 1.2
     if (Math.abs(r.psi) > psiMax) r.psi = Math.sign(r.psi) * psiMax
     if (Math.abs(r.phi) > 1.2) r.phi = Math.sign(r.phi) * 1.2
 
@@ -338,14 +346,22 @@ export class Race {
     const i2 = t.index(r.D)
     const half = t.half[i2]
     if (t.isFull(i2)) r.x = t.wrapX(i2, r.x)
-    // landing off a drum: a little room either side of the road it goes on to
-    if (shift && Math.abs(r.x) > half && Math.abs(r.x) < half + 0.8) r.x = Math.sign(r.x) * (half - 0.15)
-    // the last metres of a pipe or a drum draw you gently to where the road goes on (the short way round)
+    // landing off a drum: a little room either side of the road it goes on to (DRUM_TOL); further round the drum
+    // than that, you leave it where there is no road: off you fly (round 22, Stefan)
+    // (a drum ends at a seam, the road going on from another line, or where its section opens out)
+    const iBefore = t.index(before)
+    const offDrum = t.kappa[iBefore] < -1e-4 && (shift || (t.isFull(iBefore) && !t.isFull(i2)))
+    if ((shift || offDrum) && Math.abs(r.x) > half) {
+      if (Math.abs(r.x) < half + DRUM_TOL) r.x = Math.sign(r.x) * (half - 0.15)
+      else if (offDrum && !air) { r.air = true; r.vh = 1.2 * U; r.h = 0.02; this.courseOut(r) }
+    }
+    // the last metres of a pipe or a drum draw you gently to where the road goes on (the short way round), on a
+    // drum only from close enough to it: from the far side you are on your own
     const exit = !air && t.exitAt(i2)
     if (exit && exit.dist < 9) {
       let d = exit.x - r.x
       if (t.isFull(i2)) d = t.wrapX(i2, d)
-      r.x += d * Math.min(1, dt * (0.6 + (9 - exit.dist) * 0.16))
+      if (!(t.kappa[i2] < -1e-4) || Math.abs(d) < t.width / 2 + DRUM_TOL) r.x += d * Math.min(1, dt * (0.6 + (9 - exit.dist) * 0.16))
     }
     r.ghost = Math.max(0, (r.ghost ?? 0) - dt)
     r.steerVis += (inp.steer + r.lean * 0.6 - r.steerVis) * Math.min(1, dt * 8)
