@@ -173,15 +173,17 @@ export class Hud {
     this.shown = on
     for (const p of this.panels) p.show(on)
     if (!on) { this.lights?.show(false); for (const t of this.tags) t.show(false); for (const b of this.bars) b.visible = false }
-    if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur); this.cine = false; this.cineK = 0; this.msg.place('c', 0, -60) }
+    if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur); this.cine = false; this.cineK = 0; this.msg.place('c', 0, -60); this.small.place('t', 0, 96) }
   }
 
   /** The finish's shots: the gauges go, the black bars close in (and open again when off). */
   cinema(on) {
     this.cine = on
     for (const p of this.gauges) p.show(this.shown && !on)
-    // the big words go up, over the picture's top third (the shots hold the machine in the middle)
+    // the big words go up, over the picture's top third (the shots hold the machine in the middle), and the small
+    // line down to the foot of the picture
     this.msg.place('c', 0, on ? -212 : -60)
+    this.small.place(on ? 'b' : 't', 0, on ? 92 : 96)
     if (on) for (const t of this.tags) t.show(false)
   }
 

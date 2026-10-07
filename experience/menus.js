@@ -84,6 +84,8 @@ export class Menus {
     this.onlinePick = false     // the machine screen is the online race's pick (against the clock)
     this.locked = false         // your pick is locked in
     this.weekly = null          // your place in the week's table after a race
+    this.prize = null           // the city's prize after a clean race: { ok, text }
+    this.prizeRule = ''         // the city's prize, said on the main menu ('' when the lot has none)
     this.flash = ''
     this.screen = null
     this.blinkT = 0
@@ -269,7 +271,7 @@ export class Menus {
   }
 
   redraw() {
-    this.page.update(`${this.screen}|${JSON.stringify(this.sel)}|${JSON.stringify(this.best)}|${JSON.stringify(this.table ?? [])}|${this.dataKey ?? ''}|${this.lobbyKey()}|${JSON.stringify(this.weekly)}|${this.flash}|${this.hover}|${this.screen === 'cup' ? Math.round(this.cupT * 60) : 0}|${this.gal.at}|${this.gal.page}|${this.gal.list?.length ?? -1}|${this.gal.loadingModel ?? ''}|${!!this.gal.pilot}|${this.gal.note ?? ''}|${this.gal.liking ? 1 : 0}|${this.gal.list?.[this.gal.at]?.likes ?? 0}|${this.gal.list?.[this.gal.at]?.liked ? 1 : 0}|${Math.round((this.gal.pulse ?? 0) * 20)}`, this.screen)
+    this.page.update(`${this.screen}|${JSON.stringify(this.sel)}|${JSON.stringify(this.best)}|${JSON.stringify(this.table ?? [])}|${this.dataKey ?? ''}|${this.lobbyKey()}|${JSON.stringify(this.weekly)}|${JSON.stringify(this.prize)}|${this.flash}|${this.hover}|${this.screen === 'cup' ? Math.round(this.cupT * 60) : 0}|${this.gal.at}|${this.gal.page}|${this.gal.list?.length ?? -1}|${this.gal.loadingModel ?? ''}|${!!this.gal.pilot}|${this.gal.note ?? ''}|${this.gal.liking ? 1 : 0}|${this.gal.list?.[this.gal.at]?.likes ?? 0}|${this.gal.list?.[this.gal.at]?.liked ? 1 : 0}|${Math.round((this.gal.pulse ?? 0) * 20)}`, this.screen)
   }
 
   // ------------------------------------------------------------ the mouse
@@ -725,6 +727,7 @@ export class Menus {
         }
       })
       if (this.flash) t.draw(c, this.flash, 640, 148, 12, { color: '#ff6b7d', align: 'center', skew: 0, spacing: 0.1, outline: false })
+      else if (this.prizeRule) t.draw(c, this.prizeRule, 640, 148, 11, { color: C_GOLD, align: 'center', skew: 0, spacing: 0.12, outline: false, glow: 'rgba(255,170,30,0.5)', glowBlur: 6 })
       hint('ARROWS: SELECT  ·  SPACE: CHOOSE  ·  BACKSPACE: TITLE')
       return
     }
@@ -1050,9 +1053,13 @@ export class Menus {
       const tc = me.retired ? '#ff4d6d' : me.rank <= 3 ? C_GOLD : C_CYAN
       f.draw(c, title, 640, 66, 42, { color: me.retired ? ['#ffe0e0', '#ff6b6b', '#ff1f3d'] : me.rank <= 3 ? GOLD : CYAN, align: 'center', skew: 0.14, outline: false, glow: tc, glowBlur: 14 })
       if (!me.retired) t.draw(c, `TIME  ${fmtTime(me.finishTime)}`, 640, 110, 16, { color: '#ffffff', align: 'center', skew: 0, spacing: 0.2, outline: false })
-      if (d.record) t.draw(c, 'NEW RECORD!', 640, 136, 13, { color: '#ff8ae6', align: 'center', skew: 0, spacing: 0.3, outline: false, glow: C_PINK, glowBlur: 8 })
-      if (this.weekly?.place) t.draw(c, `WEEKLY TABLE  #${this.weekly.place}  /  YOUR BEST ${fmtTime(this.weekly.best / 1000)}`, 640, 160, 11, { color: C_GOLD, align: 'center', skew: 0, spacing: 0.16, outline: false })
-      if (d.cup?.last && d.cup.total) t.draw(c, `CUP TIME  ${fmtTime(d.cup.total)}`, 640, 184, 12, { color: C_CYAN, align: 'center', skew: 0, spacing: 0.2, outline: false })
+      // under the time: a record, the week's table, the cup's time, the city's prize (as many as there are)
+      let ly = 134
+      const line = (text, size, opts) => { t.draw(c, text, 640, ly, size, { align: 'center', skew: 0, outline: false, ...opts }); ly += 22 }
+      if (d.record) line('NEW RECORD!', 13, { color: '#ff8ae6', spacing: 0.3, glow: C_PINK, glowBlur: 8 })
+      if (this.weekly?.place) line(`WEEKLY TABLE  #${this.weekly.place}  /  YOUR BEST ${fmtTime(this.weekly.best / 1000)}`, 11, { color: C_GOLD, spacing: 0.16 })
+      if (d.cup?.last && d.cup.total) line(`CUP TIME  ${fmtTime(d.cup.total)}`, 12, { color: C_CYAN, spacing: 0.2 })
+      if (this.prize) line(this.prize.text, this.prize.ok ? 13 : 11, { color: this.prize.ok ? C_GOLD : '#ff8ae6', spacing: 0.16, glow: this.prize.ok ? 'rgba(255,170,30,0.7)' : null, glowBlur: 10 })
       // left: your laps, then the week's table
       glass(c, 100, 206, 440, 214, { k: 12 })
       t.draw(c, 'YOUR LAPS', 124, 230, 9.5, { color: MUTED, skew: 0, spacing: 0.3, outline: false })

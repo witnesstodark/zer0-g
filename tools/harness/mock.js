@@ -71,10 +71,17 @@ const p0 = {
       return { ok: true, likes: likes[id] ?? 0, liked }
     },
   },
-  time: 0, game: null, table: null, debugAutopilot: params.get('auto') === '1',
+  // ?prize=1: the lot's game pays 50 a win, once a player, 10 winners (the city's prize, round 25);
+  // ?prize=taken: the same, and the answer to a win is that this player already won
+  time: 0, game: params.get('prize') ? { price: 0, prize: 50, mode: 'win', perPlayer: 'once', winners: 10, places: 3, lowWins: false, minSeconds: 60, paid: 0 } : null,
+  table: null, debugAutopilot: params.get('auto') === '1',
   // ?env=space|desert: every course in that world (the game reads p0.debugEnv; never set in the game)
   debugEnv: params.get('env') || null, debugHooks: o => { window.__dbg = o },
-  win() { console.log('[p0] win') }, score(n) { console.log('[p0] score', n) }, items: { give() {} },
+  win() {
+    console.log('[p0] win')
+    const pz = params.get('prize')
+    if (pz) setTimeout(() => emit('reward', pz === 'taken' ? { kind: 'win', ok: false, tokens: 0, reason: 'You already won the prize here' } : { kind: 'win', ok: true, tokens: 45, reason: null }), 150)
+  }, score(n) { console.log('[p0] score', n) }, items: { give() {} },
 }
 // ?pid=N: a shared session between tabs of one browser (a BroadcastChannel stands in for the server): the
 // state, messages, inputs and 20-a-second ticks (from the lowest id, the host), joins and leaves

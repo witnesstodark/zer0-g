@@ -17,7 +17,7 @@ import { renderHeroes } from './heroes.js'      // [environments] the worlds rou
 import { shared } from './look.js'
 import { PILOTS, RIVALS, RIVAL_ACCENTS, loadMachines, loadEntityMachine, neonEnvironment, Fleet, Showroom } from './machines.js'
 import { validate as validateMachine, hex as hexColor } from './entity_rules.js'
-import { Race, Racer, DT, makeAI, CLASSES, SCALE, NITRO_MAX, driftTier } from './race.js'
+import { Race, Racer, DT, makeAI, CLASSES, SCALE, NITRO_MAX, driftTier, LIVES } from './race.js'
 import { Cameras, Director } from './camera.js'
 import { Fx, SlideMarks, Emblems } from './fx.js'
 import { Airflow } from './airflow.js'
@@ -246,6 +246,11 @@ export default async function start(p0) {
   let config = null
   let resultsShown = false
   let finishCine = false              // the finish's shots are on (the director has the camera)
+  let prizeAsked = false              // p0.win() asked this session (the city's prize: once)
+  const game = p0.game
+  const prizeOn = !!game && game.mode === 'win' && game.prize > 0
+  const prizeNet = prizeOn ? game.prize - Math.floor(game.prize * 0.1) : 0      // 10% goes to the project fund
+  const prizeRule = !prizeOn ? '' : `${game.winners ? `THE FIRST ${game.winners} CLEAN RACES` : 'A CLEAN RACE'} ON STANDARD OR EXPERT WIN ${prizeNet} TOKENS FROM THE CITY${game.perPlayer === 'once' ? ', ONE EACH' : ''}`
   let raceMusic = -1
   let nitroVoiceAt = -99
   let healAt = 0
@@ -341,6 +346,7 @@ export default async function start(p0) {
     fleet.setRacers(racers.map(r => ({ model: r.model, accent: r.accent, hue: r.hue, sat: r.sat })))
     director = new Director(cams, race)
     finishCine = false
+    if (menus && !attract) menus.prize = null
     fallen.clear()
     wrecks.clear()
     resultsShown = false
@@ -522,6 +528,7 @@ export default async function start(p0) {
         hud.say('FINISH!', 2.8, 'gold', `${solo ? '' : r.rank === 1 ? 'WINNER   ' : `${ordinal(r.rank)} PLACE   `}${fmtTime(r.finishTime)}`)
         for (let k = 0; k < 5; k++) fx.fireworks(new THREE.Vector3((random() - 0.5) * 20, 14 + random() * 10, (random() - 0.5) * 30), [0x29d3ff, 0xff2bd6, 0xffb21f][k % 3])
         finishShots()
+        if (cleanRun()) claimPrize()
       }
     }
   }
@@ -912,6 +919,8 @@ export default async function start(p0) {
     audio.stopMusic()
     audio.voice('ready')
     audio.sfx('crowd', { volume: 0.5 })
+    // the city's prize, said before a race that can win it
+    if (prizeOn && !prizeAsked && (cfg.mode === 'gp' || cfg.mode === 'online') && cfg.cls >= 1) hud.note(`${game.winners ? `THE FIRST ${game.winners} TO FINISH` : 'FINISH'} WITHOUT A WRECK: ${prizeNet} TOKENS FROM THE CITY`, 4.5, 'gold')
     director.play([{ kind: 'grid', dur: cfg.online ? SHOW - 3 : 3.8, racer: race.racers.indexOf(me) }], false)
     p0.hud(CONTROLS)
     hud.note('SPACE + STEER: DRIFT  ·  SHIFT: NITRO, HOLD FOR MORE', 3.5, 'pink')
@@ -923,6 +932,21 @@ export default async function start(p0) {
    * nose to tail, high ahead looking back down the road), then the camera swings round behind it into the chase
    * camera for the lap of honour, until the results.
    */
+  /**
+   * The city's prize (round 25, Stefan: 50 tokens a win, once a player, 500 from the city's treasury): a win is
+   * a whole race (both laps) in a Grand Prix or an online race on STANDARD or EXPERT, finished without losing a
+   * machine; never for joining, trying, a part of a race, NOVICE or a time attack alone. p0.win() once a session
+   * (the server counts one a session); its answer comes back as a 'reward' and is shown. The rules shown are the
+   * lot's own (p0.game), so nothing is promised while no prize is set.
+   */
+  function cleanRun() {
+    return !!me && me.finished && !me.retired && (me.lives ?? LIVES) >= LIVES && (config.mode === 'gp' || config.mode === 'online') && (config.cls ?? 0) >= 1
+  }
+  function claimPrize() {
+    if (prizeAsked) return
+    prizeAsked = true
+    p0.win()
+  }
   function finishShots() {
     if (!me || state !== 'race') return
     const i = race.racers.indexOf(me), sd = me.x > 0 ? -1 : 1     // the first shot from the road's middle
@@ -953,7 +977,6 @@ export default async function start(p0) {
     let record = false
     if (me.finished) {
       if (!(menus.best[key] <= me.finishTime)) { record = menus.best[key] != null; menus.best[key] = me.finishTime }
-      if (wasOnline && me.rank === 1) p0.win()
       if (record) audio.voice('record')
     }
     // the cup: points by place; after the third race, the cup's winner and your total time for the week's table
@@ -961,7 +984,6 @@ export default async function start(p0) {
     if (cup) {
       if (me.finished && me.finishTime > 0) cup.total += me.finishTime; else cup.all = false
       if (cup.k === 2) {
-        if (cupTable()[0][0] === me.name) p0.win()
         // the week's table is the ZER0-G Cup's (one table: the other cups' times would not compare)
         if (cup.all && cup.index === 0) p0.score(Math.round(cup.total * 1000))
       }
@@ -1011,7 +1033,19 @@ export default async function start(p0) {
   }
   online.onOpen = () => { if (state === 'menu' && (menus.screen === 'machine' || menus.screen === 'online')) menus.open('lobby') }
   online.onGone = () => { if (state === 'menu' && (menus.screen === 'lobby' || menus.screen === 'machine')) { menus.flash = 'THE LOBBY CLOSED'; menus.open('online') } }
-  p0.on('reward', r => { if (r.kind === 'score' && r.ok) { menus.weekly = { best: r.best, place: r.place }; menus.redraw() } })
+  p0.on('reward', r => {
+    if (r.kind === 'score' && r.ok) { menus.weekly = { best: r.best, place: r.place }; menus.redraw() }
+    // the city's prize: the tokens, or why not (already won, all taken, the pool empty...); a game with no prize
+    // answers with no reason, and then nothing is said
+    if (r.kind === 'win' && (r.ok || r.reason)) {
+      const got = r.ok && r.tokens > 0
+      menus.prize = got ? { ok: true, text: `+${r.tokens} TOKENS FROM THE CITY!` } : { ok: false, text: String(r.reason).toUpperCase() }
+      if (state === 'race') hud.note(menus.prize.text, got ? 5 : 4, got ? 'gold' : 'pink')
+      if (got) { audio.sfx('nitro', { volume: 0.9 }); screen.flash(0xffd66b, 0.6) }
+      menus.redraw()
+    }
+  })
+  menus.prizeRule = prizeRule        // (the game is not told how many prizes are taken: 'the first N' stays true)
 
   // ---- warm-up: every kind of material drawn once on its own, so no frame stalls on a shader
   p0.hud('ZER0-G\nWarming up the engines...')
