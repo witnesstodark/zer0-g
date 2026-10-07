@@ -24,7 +24,7 @@ const B = await open(2, 'FRIEND')
 const wait = ms => A.waitForTimeout(ms)
 const press = async (p, k) => { await p.bringToFront(); await p.keyboard.press(k); await wait(250) }
 const screen = p => p.evaluate(() => window.__dbg?.menus?.screen ?? '?')
-const lobby = p => p.evaluate(() => { const L = window.__p0.room.state.lobby; return L ? `${L.phase} owner=${L.owner} field=${JSON.stringify(L.field?.map(f => f.pid + ':' + f.m) ?? null)}` : 'none' })
+const lobby = p => p.evaluate(() => { const s = window.__p0.room.state, mine = s[`in:${window.__p0.me.id}`]?.l, all = Object.keys(s).filter(k => k.startsWith('lobby:') && s[k]).map(k => s[k]), L = all.find(x => x.id === mine) ?? all[0]; return L ? `${L.phase} owner=${L.owner} field=${JSON.stringify(L.field?.map(f => f.pid + ':' + f.m) ?? null)}` : 'none' })
 const frames = p => p.evaluate(() => window.__dbg?.race?.time ?? -1)
 for (const p of [A, B]) { for (let k = 0; k < 20 && (await screen(p)) !== 'title'; k++) { await press(p, 'Space'); await wait(500) } }
 // A: ONLINE RACE -> create a lobby, then wait in it
@@ -35,7 +35,7 @@ console.log('A created:', await lobby(A), 'A on', await screen(A))
 await press(B, 'Space'); await press(B, 'ArrowRight'); await press(B, 'Space'); await wait(500)
 for (let t = 0; t < lobbyWait; t += 10) { await wait(10000); console.log(`${t + 10} s in the lobby: A on`, await screen(A), '|', await lobby(A), '| B on', await screen(B)) }
 // B joins, A starts
-await press(B, 'Space'); await wait(800); console.log('B joined: B on', await screen(B), '|', await lobby(B))
+await press(B, 'ArrowDown'); await press(B, 'Space'); await wait(800); console.log('B joined: B on', await screen(B), '|', await lobby(B))
 await press(A, 'Space'); await wait(1000); console.log('A started: A on', await screen(A), 'B on', await screen(B), '|', await lobby(A))
 // A picks its own machine (the last tile: left from the first), B a stock one
 await press(A, 'ArrowLeft'); await press(A, 'Space'); await wait(500)

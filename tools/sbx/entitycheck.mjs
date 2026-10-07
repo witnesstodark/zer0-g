@@ -56,7 +56,7 @@ await B.bringToFront(); await press(B, 'Space'); await press(B, 'ArrowRight'); a
 await A.bringToFront(); await press(A, 'Space'); await wait(A, 900)
 await B.bringToFront(); await B.evaluate(() => { const m = window.__dbg.menus; m.sel.machine = 18; m.showMachine() }); await press(B, 'Space')
 await A.bringToFront(); await press(A, 'Space'); await wait(A, 3000)
-console.log('field', await A.evaluate(() => JSON.stringify(window.__p0.room.state.lobby?.field)))
+console.log('field', await A.evaluate(() => JSON.stringify(Object.entries(window.__p0.room.state).find(([k, v]) => k.startsWith('lobby:') && v)?.[1]?.field)))
 await wait(A, 6000)
 const see = p => p.evaluate(() => window.__dbg.race.racers.filter(r => r.human).map(r => `${r.name}${r.remote ? '(remote)' : ''} model ${r.model} particle ${r.particle}`).join(' | '))
 console.log('A sees', await see(A)); console.log('B sees', await see(B))

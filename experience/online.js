@@ -1,15 +1,16 @@
-// ONLINE RACE: racing the others inside the lot. Everyone inside shares one session, and the session has at most
-// one lobby. Open ONLINE RACE and either create the lobby (choosing its course and class) or join the open one.
+// ONLINE RACE: racing the others inside the lot. Everyone inside shares one session, which holds up to MAX_LOBBIES
+// lobbies. Open ONLINE RACE: the list of lobbies; create one of your own (its course and class) or join an open one.
 // Its owner starts it when everyone is in; then everyone picks a machine (PICK seconds, Space to lock in), and
 // the race starts for all at once on the session's clock (its ticks, 20 a second). Each player flies their own
 // machine and sends where it is eight times a second; the first player of the field still inside flies the AI
 // rivals and sends theirs. Everyone else's machines are drawn from those messages, run on between them and eased
 // onto each new one; a collision pushes only your own machine. After the race the lobby opens again.
 //
-// Shared state: 'lobby' { id, owner, co, c, phase: 'open' | 'pick' | 'race', until (tick), start (tick), seed,
-// field } and 'in:<player id>' { n (name), m (machine, or null), e (engine), ok (locked in), at (tick: the member's
-// game was running then; renewed every few seconds) }. Messages: 'r' (a player's machine), 'a' (the AI rivals),
-// 'af' (an AI rival finished).
+// Shared state: 'lobby:<id>' { id, made (tick), owner, co, c, phase: 'open' | 'pick' | 'race', until (tick), start
+// (tick), seed, field } for each lobby, and 'in:<player id>' { l (their lobby's id), n (name), m (machine, or null),
+// e (engine), ok (locked in), at (tick: the member's game was running then; renewed every few seconds) }. Messages,
+// each with g, its race ('<lobby id>:<start>'): 'r' (a player's machine), 'a' (the AI rivals), 'af' (an AI rival
+// finished), 're' (a player's new id after a reconnect).
 //
 // A server update or a dropped connection puts everyone into a new session with new ids, sometimes with the state
 // gone: each keeps their place in the lobby here and takes it back under the new id (the owner makes the lobby
@@ -27,6 +28,7 @@ const SET_GAP = 0.6                   // seconds between the same change sent tw
 const BEAT = 4                        // seconds between a member's "still here"
 const QUIET = 14                      // seconds without one: that member is away
 const RACE_MAX = 240                  // seconds a race may last before its lobby opens again anyway
+const MAX_LOBBIES = 8                 // lobbies a session holds at once
 const OPEN_QUIET = 45                 // seconds an open lobby waits for a quiet owner (a tab in the background) before
                                       // someone who joined it may take it over
 
@@ -68,17 +70,24 @@ export class Online {
   get live() { return this.p0.time - this.tickAt < 0.5 }
   get me() { return this.p0.me.id }
   get players() { return this.room.players ?? [this.me] }
-  get lobby() { return this.room.state.lobby ?? null }
+  get lobbies() {
+    return Object.entries(this.room.state).filter(([k, v]) => k.startsWith('lobby:') && v).map(([, v]) => v).sort((a, b) => (a.made ?? 0) - (b.made ?? 0))
+  }
+  lobbyOf(id) { return id == null ? null : this.room.state[`lobby:${id}`] ?? null }
+  /** Your lobby (the one your entry is in), or null. */
+  get lobby() { return this.lobbyOf(this.entry()?.l) }
   get isOwner() { return this.lobby?.owner === this.me }
   entry(id = this.me) { return this.room.state[`in:${id}`] ?? null }
-  get isMember() { return !!this.entry() }
+  get isMember() { return !!this.lobby }
   name(id) { return this.entry(id)?.n ?? (this.p0.players?.get?.(id)?.name ?? 'PLAYER') }
+  setLobby(id, value) { this.room.set(`lobby:${id}`, value) }
 
-  /** The lobby's members inside the lot, in the order they joined (their ids). */
-  members() {
+  /** A lobby's members inside the lot, in the order they joined (their ids). */
+  members(L = this.lobby) {
+    if (!L) return []
     const ids = new Set(this.players)
     return Object.entries(this.room.state)
-      .filter(([k, v]) => k.startsWith('in:') && v && ids.has(Number(k.slice(3))))
+      .filter(([k, v]) => k.startsWith('in:') && v && v.l === L.id && ids.has(Number(k.slice(3))))
       .map(([k, v]) => ({ pid: Number(k.slice(3)), ...v }))
       .sort((a, b) => a.pid - b.pid)
   }
@@ -98,35 +107,38 @@ export class Online {
 
   myName() { return String(this.p0.me.name ?? 'PLAYER').toUpperCase().slice(0, 16) }
 
-  // ------------------------------------------------------------ the lobby
-  /** Open a lobby (when none is open) on a course and class; you own it. */
+  // ------------------------------------------------------------ the lobbies
+  /** Open a lobby of your own on a course and class (leaving the one you are in). False when there are MAX_LOBBIES. */
   create(sel) {
-    if (this.lobby) return false
+    if (this.isMember) this.leave()
+    if (this.lobbies.length >= MAX_LOBBIES) return false
     this.keepAlive()
-    this.room.set('lobby', { id: Math.floor(this.now) + 1, owner: this.me, co: sel.course ?? 0, c: sel.cls ?? 1, phase: 'open', until: 0, start: 0, seed: Math.floor(Math.random() * 1e9), field: null })
-    this.room.set(`in:${this.me}`, { n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false, at: Math.floor(this.now) })
+    const made = Math.floor(this.now), id = `${made}-${this.me}`
+    this.setLobby(id, { id, made, owner: this.me, co: sel.course ?? 0, c: sel.cls ?? 1, phase: 'open', until: 0, start: 0, seed: Math.floor(Math.random() * 1e9), field: null })
+    this.room.set(`in:${this.me}`, { l: id, n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false, at: made })
     return true
   }
 
-  /** Join the open lobby. */
-  join(sel) {
-    const L = this.lobby
+  /** Join an open lobby (leaving the one you are in). */
+  join(sel, id) {
+    const L = this.lobbyOf(id)
     if (!L || L.phase !== 'open') return false
+    if (this.isMember && this.lobby.id !== id) this.leave()
     this.keepAlive()
-    this.room.set(`in:${this.me}`, { n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false, at: Math.floor(this.now) })
+    this.room.set(`in:${this.me}`, { l: id, n: this.myName(), m: null, e: sel.engine ?? 0.5, ok: false, at: Math.floor(this.now) })
     return true
   }
 
   /** A member whose game is running (it said so in the last QUIET seconds). */
   active(id) { const e = this.entry(id); return !!e && (e.at ?? -1e9) > this.now - QUIET * TPS }
 
-  /** Leave the lobby (the owner hands it to the next member, or closes it when nobody is left). */
+  /** Leave your lobby (the owner hands it to the next member, or closes it when nobody is left). */
   leave() {
     const L = this.lobby
-    if (this.isMember) this.room.set(`in:${this.me}`, null)
+    if (this.entry()) this.room.set(`in:${this.me}`, null)
     if (L && L.owner === this.me) {
-      const next = this.members().find(m => m.pid !== this.me)
-      this.room.set('lobby', next ? { ...L, owner: next.pid } : null)
+      const next = this.members(L).find(m => m.pid !== this.me)
+      this.setLobby(L.id, next ? { ...L, owner: next.pid } : null)
     }
     this.race = null
     this.starting = false
@@ -137,7 +149,7 @@ export class Online {
     const L = this.lobby
     if (!L || !this.isOwner || L.phase !== 'open') return
     this.keepAlive()
-    this.room.set('lobby', { ...L, phase: 'pick', until: Math.floor(this.now + PICK * TPS) })
+    this.setLobby(L.id, { ...L, phase: 'pick', until: Math.floor(this.now + PICK * TPS) })
   }
 
   /** Lock in a machine. */
@@ -147,39 +159,49 @@ export class Online {
     this.room.set(`in:${this.me}`, { ...e, m: machine, e: engine, ok: true, at: Math.floor(this.now) })
   }
 
-  /** What the menus show: the lobby, its members, seconds left to pick. */
+  /** A lobby for the list: its owner, course, class, phase, how many are in it and how long a race keeps it closed. */
+  summary(L) {
+    const members = this.members(L)
+    return {
+      id: L.id, owner: this.name(L.owner), co: L.co ?? 0, c: L.c ?? 1, phase: L.phase, count: members.length, mine: this.entry()?.l === L.id,
+      racing: L.phase === 'race' && L.field ? this.racing(L).length : 0,
+      raceLeft: L.phase === 'race' ? Math.max(0, (L.start + RACE_MAX * TPS - this.now) / TPS) : 0,
+      left: L.phase === 'pick' ? Math.max(0, (L.until - this.now) / TPS) : 0,
+    }
+  }
+
+  /** What the menus show: your lobby, its members, seconds left to pick; every lobby for the list. */
   view() {
     const L = this.lobby
     return {
-      lobby: L, members: this.members().map(m => ({ ...m, away: !this.active(m.pid) })), owner: L ? this.name(L.owner) : '', left: L?.phase === 'pick' ? Math.max(0, (L.until - this.now) / TPS) : 0, mine: this.isMember, isOwner: this.isOwner, inside: this.players.length,
-      // a race on: who is still flying it, and the longest it can keep the lobby closed
+      lobby: L, members: this.members(L).map(m => ({ ...m, away: !this.active(m.pid) })), owner: L ? this.name(L.owner) : '', left: L?.phase === 'pick' ? Math.max(0, (L.until - this.now) / TPS) : 0, mine: this.isMember, isOwner: this.isOwner, inside: this.players.length,
       racing: L?.phase === 'race' && L.field ? this.racing(L).length : 0, raceLeft: L?.phase === 'race' ? Math.max(0, (L.start + RACE_MAX * TPS - this.now) / TPS) : 0,
+      lobbies: this.lobbies.map(x => this.summary(x)), full: this.lobbies.length >= MAX_LOBBIES,
     }
   }
 
   // ------------------------------------------------------------ every frame
   update() {
     const L = this.lobby
-    if (L && this.isMember) this.memo = { lobby: { ...L }, owner: L.owner === this.me, entry: { ...this.entry() }, me: this.me, at: this.p0.time }
+    if (L) this.memo = { lobby: { ...L }, owner: L.owner === this.me, entry: { ...this.entry() }, me: this.me, at: this.p0.time }
     else if (!this.rejoin && this.p0.time - (this.memo?.at ?? -99) > 2) this.memo = null
     if (this.rejoin) this.retake()
-    // the clock runs while you are in a lobby or a race, and while you look at someone else's (so a lobby left by
-    // a quiet owner can be seen to be stuck and freed)
-    if (this.isMember || this.race || (L && this.watching)) this.keepAlive()
+    // the clock runs while you are in a lobby or a race, and while you look at the list of lobbies
+    if (this.isMember || this.race || (this.watching && this.lobbies.length)) this.keepAlive()
     // still here: renewed every few seconds while a member
     const mine = this.entry()
-    if (mine && this.live && (mine.at ?? -1e9) < this.now - BEAT * TPS) this.set(`in:${this.me}`, { ...mine, at: Math.floor(this.now) })
-    this.tidy(L)
+    if (mine && L && this.live && (mine.at ?? -1e9) < this.now - BEAT * TPS) this.set(`in:${this.me}`, { ...mine, at: Math.floor(this.now) })
+    this.tidy()
     if (L && this.isOwner) this.run(L)
     else if (L) this.unstick(L)
     if (this.race) this.applyDriver()
     // tell the game what changed for you
-    const phase = L && this.isMember ? `${L.id}:${L.phase}:${L.start}` : null
+    const phase = L ? `${L.id}:${L.phase}:${L.start}` : null
     if (phase !== this.phaseSeen) {
       const was = this.phaseSeen
       this.phaseSeen = phase
       // (not when your id has just changed under you: a reconnect, and the place is taken back)
-      if (!L || !this.isMember) { if (was && !this.race && !this.rejoin && !(this.memo && this.memo.me !== this.me)) { this.log(`out of the lobby (${!L ? 'it closed' : 'your entry is gone'})`); this.onGone?.() } }
+      if (!L) { if (was && !this.race && !this.rejoin && !(this.memo && this.memo.me !== this.me)) { this.log(`out of the lobby (${this.entry() ? 'it closed' : 'your entry is gone'})`); this.onGone?.() } }
       else if (L.phase === 'pick') this.onPick?.(L)
       else if (L.phase === 'race' && L.field?.some(f => f.pid === this.me) && !this.race && !this.starting) {
         this.log(`lobby ${L.id}: the race starts at tick ${L.start}`)
@@ -187,11 +209,15 @@ export class Online {
         this.starting = true
         if (!this.onRace?.(L)) this.starting = false
       }
-      else if (L.phase === 'open' && was) this.onOpen?.(L)
+      else if (L.phase === 'open' && was && was.startsWith(`${L.id}:`)) this.onOpen?.(L)
     }
-    // after a race the lobby opens again: unlock your pick
+    // after a race the lobby opens again: unlock your pick; an entry left pointing at no lobby goes
     const e = this.entry()
     if (L?.phase === 'open' && e?.ok) this.set(`in:${this.me}`, { ...e, ok: false })
+    if (e && !L && !this.rejoin && this.live) {
+      this.orphan ??= this.p0.time
+      if (this.p0.time - this.orphan > 3) { this.set(`in:${this.me}`, null); this.orphan = null }
+    } else this.orphan = null
   }
 
   /** The connection came back (a server update, the network): a new session, new ids, maybe an empty state. */
@@ -216,28 +242,29 @@ export class Online {
   /** After a reconnect: your place under the new id; the lobby made again if it is gone (by its owner at once, by
    * anyone else in it after a moment if the owner has not). */
   retake() {
-    const w = this.rejoin, L = this.lobby, now = Math.floor(this.now)
+    const w = this.rejoin, L = this.lobbyOf(w.lobby.id), now = Math.floor(this.now)
     if (this.p0.time > w.until) { this.rejoin = null; return }
     this.keepAlive()
-    if (L && L.id === w.lobby.id) {
-      if (!this.entry()) this.room.set(`in:${this.me}`, { ...w.entry, at: now })
+    if (L) {
+      if (this.entry()?.l !== L.id) this.room.set(`in:${this.me}`, { ...w.entry, l: L.id, at: now })
       if (w.me !== this.me && this.room.state[`in:${w.me}`]) this.room.set(`in:${w.me}`, null)
-      if (w.owner && L.owner !== this.me) this.room.set('lobby', { ...L, owner: this.me })
+      if (w.owner && L.owner !== this.me) this.setLobby(L.id, { ...L, owner: this.me })
       this.log(`back in lobby ${L.id}`)
       this.rejoin = null
       if (L.phase === 'open') this.onOpen?.(L)
-    } else if (!L && (w.owner || this.p0.time - w.since > 3)) {
-      this.room.set('lobby', { ...w.lobby, owner: this.me, phase: 'open', field: null, until: 0 })
-      this.room.set(`in:${this.me}`, { ...w.entry, ok: false, at: now })
+    } else if (w.owner || this.p0.time - w.since > 3) {
+      this.setLobby(w.lobby.id, { ...w.lobby, owner: this.me, phase: 'open', field: null, until: 0 })
+      this.room.set(`in:${this.me}`, { ...w.entry, l: w.lobby.id, ok: false, at: now })
       this.log(`lobby ${w.lobby.id} made again`)
       this.rejoin = null
-      this.onOpen?.(this.lobby)
+      this.onOpen?.(this.lobbyOf(w.lobby.id))
     }
   }
 
-  /** The session's host keeps the state tidy: entries of players who left, a lobby whose owner left (after a few
-   * seconds gone: the list of players can lag behind, and after a reconnect everyone comes back under new ids). */
-  tidy(L) {
+  /** The session's host keeps the state tidy: entries of players who left, lobbies whose owner left or that nobody
+   * is in (after a few seconds: the list of players can lag behind, and after a reconnect everyone comes back under
+   * new ids), and lobbies nobody in has been heard from in a long while. */
+  tidy() {
     if (!this.room.isHost) return
     const ids = new Set(this.players)
     if (!ids.has(this.me)) return                   // the list is not this session's yet
@@ -250,23 +277,35 @@ export class Online {
     for (const k of Object.keys(this.room.state)) {
       if (k.startsWith('in:') && this.room.state[k] && away(Number(k.slice(3)))) { this.log(`${k} cleared: not in the lot`); this.set(k, null) }
     }
-    if (L && away(L.owner)) {
-      const next = this.members()[0]
-      this.log(`lobby ${L.id}: its owner ${L.owner} left the lot, ${next ? `handed to ${next.pid}` : 'closed'}`)
-      this.set('lobby', next ? { ...L, owner: next.pid } : null)
+    for (const L of this.lobbies) {
+      if (this.now - (L.made ?? 0) < 6 * TPS) continue
+      const members = this.members(L)
+      if (away(L.owner)) {
+        const next = members.find(m => m.pid !== L.owner)
+        this.log(`lobby ${L.id}: its owner ${L.owner} left the lot, ${next ? `handed to ${next.pid}` : 'closed'}`)
+        this.set(`lobby:${L.id}`, next ? { ...L, owner: next.pid } : null)
+      } else if (!members.length) {
+        this.empty ??= new Map()
+        if (!this.empty.has(L.id)) this.empty.set(L.id, t)
+        if (t - this.empty.get(L.id) > 4) { this.log(`lobby ${L.id} closed: nobody is in it`); this.set(`lobby:${L.id}`, null); this.empty.delete(L.id) }
+      } else {
+        this.empty?.delete(L.id)
+        // nobody in it heard from for two minutes (their games all stopped): closed, so the list stays clean
+        if (members.every(m => (m.at ?? -1e9) < this.now - 120 * TPS)) { this.log(`lobby ${L.id} closed: nobody in it for two minutes`); this.set(`lobby:${L.id}`, null) }
+      }
     }
   }
 
   /** The players of a race still flying it: in the lot, in the lobby, their game running, not finished. */
   racing(L) {
     const ids = new Set(this.players)
-    return L.field.filter(f => ids.has(f.pid) && this.active(f.pid) && !this.room.state[`done:${L.start}:${f.pid}`])
+    return L.field.filter(f => ids.has(f.pid) && this.active(f.pid) && this.entry(f.pid)?.l === L.id && !this.room.state[`done:${L.id}:${L.start}:${f.pid}`])
   }
 
   /** The owner runs the lobby: from picking to the race, and back to open when the race is over. */
   run(L, grace = 0) {
     const now = this.now
-    const members = this.members().filter(m => this.active(m.pid))
+    const members = this.members(L).filter(m => this.active(m.pid))
     if (L.phase === 'pick') {
       if (!this.live) return
       // once per pick (the state comes back a frame or two later: written again, the start would differ by a tick
@@ -275,36 +314,36 @@ export class Online {
       if (members.length && (members.every(m => m.ok) || now >= L.until + TPS * (1 + grace))) {
         this.raceSet = `${L.id}:${L.until}`
         this.log(`lobby ${L.id}: everyone picked, the race is set`)
-        this.set('lobby', { ...L, phase: 'race', start: Math.floor(now + SHOW * TPS), field: members.map(m => ({ pid: m.pid, m: m.m ?? 0, e: m.e ?? 0.5, n: m.n })) })
+        this.set(`lobby:${L.id}`, { ...L, phase: 'race', start: Math.floor(now + SHOW * TPS), field: members.map(m => ({ pid: m.pid, m: m.m ?? 0, e: m.e ?? 0.5, n: m.n })) })
       }
     } else if (L.phase === 'race' && L.field) {
       // over when every player in it has finished, retired or gone, or after four minutes
       if ((!this.racing(L).length && now > L.start + grace * TPS) || now > L.start + (RACE_MAX + grace) * TPS) {
         this.log(`lobby ${L.id}: the race is over, the lobby opens again`)
-        this.set('lobby', { ...L, phase: 'open', field: null, until: 0 })
-        for (const f of L.field) this.set(`done:${L.start}:${f.pid}`, null)
-        if (this.room.state[`drv:${L.start}`] != null) this.set(`drv:${L.start}`, null)
+        this.set(`lobby:${L.id}`, { ...L, phase: 'open', field: null, until: 0 })
+        for (const f of L.field) this.set(`done:${L.id}:${L.start}:${f.pid}`, null)
+        if (this.room.state[`drv:${L.id}:${L.start}`] != null) this.set(`drv:${L.id}:${L.start}`, null)
       }
     }
   }
 
   /**
    * The owner alone runs a lobby (two writers raced each other: two start times, the race begun twice). Only when
-   * the owner has gone quiet does anyone else touch it, and then all the same way: it goes to the first member
+   * the owner has gone quiet does anyone else in it touch it, and then all the same way: it goes to the first member
    * still here (who runs it from then on), or closes when nobody in it is.
    */
   unstick(L) {
-    if (!this.live || this.now - L.id < 6 * TPS) return       // a lobby just made: its members may not have arrived yet
+    if (!this.live || this.now - (L.made ?? 0) < 6 * TPS) return       // a lobby just made: its members may not have arrived yet
     if (this.active(L.owner)) return
-    const here = this.members().filter(m => this.active(m.pid))
+    const here = this.members(L).filter(m => this.active(m.pid))
     // an open lobby is never closed for a quiet owner (their tab may only be in the background, waiting): someone
     // who joined it may take it over after a long quiet, so that they can start it
     if (L.phase === 'open') {
       const e = this.entry(L.owner), quiet = e ? (this.now - (e.at ?? -1e9)) / TPS : Infinity
       if (!here.length || quiet < OPEN_QUIET) return
-    } else if (!here.length) { this.log(`lobby ${L.id} closed: nobody in it is here`); this.set('lobby', null); return }
+    } else if (!here.length) { this.log(`lobby ${L.id} closed: nobody in it is here`); this.set(`lobby:${L.id}`, null); return }
     this.log(`lobby ${L.id}: its owner ${L.owner} went quiet, handed to ${here[0].pid}`)
-    this.set('lobby', { ...L, owner: here[0].pid })
+    this.set(`lobby:${L.id}`, { ...L, owner: here[0].pid })
   }
 
   log(text) { if (this.p0.time - (this.logged?.[text] ?? -99) > 5) { (this.logged ??= {})[text] = this.p0.time; this.p0.log(`[online] ${text}`) } }
@@ -312,14 +351,14 @@ export class Online {
   /** You finished or retired: the owner can open the lobby again when everyone has. */
   done() {
     const L = this.race?.lobby
-    if (L) this.room.set(`done:${L.start}:${this.me}`, 1)
+    if (L) this.room.set(`done:${L.id}:${L.start}:${this.me}`, 1)
   }
 
   // ------------------------------------------------------------ the race
   /** Start flying an online race: racers in field order (players first, then the AI rivals). */
   begin(lobby, racers, me) {
     this.starting = false
-    this.race = { lobby, racers, me, aiFrom: lobby.field.length, sentFinish: new Set(), seen: new Map(), began: this.p0.time }
+    this.race = { lobby, key: `${lobby.id}:${lobby.start}`, racers, me, aiFrom: lobby.field.length, sentFinish: new Set(), seen: new Map(), began: this.p0.time }
     this.applyDriver()
   }
 
@@ -334,7 +373,7 @@ export class Online {
     if (!R) return null
     const ids = new Set(this.players), t = this.p0.time
     const running = pid => pid === this.me || (ids.has(pid) && t - (R.seen.get(pid) ?? R.began) < 2.5)
-    const named = this.room.state[`drv:${R.lobby.start}`]
+    const named = this.room.state[`drv:${R.key}`]
     if (named != null && R.lobby.field.some(f => f.pid === named) && running(named)) return named
     return R.lobby.field.find(f => running(f.pid))?.pid ?? null
   }
@@ -349,7 +388,7 @@ export class Online {
     const first = R.driving === undefined
     R.driving = drive
     // taking over: say so (once), and start the rivals from where their last update put them
-    const key = `drv:${R.lobby.start}`
+    const key = `drv:${R.key}`
     if (drive && !first && this.room.state[key] !== this.me) { this.room.set(key, this.me); this.log('flying the AI rivals now') }
     R.racers.forEach((r, i) => {
       if (i < R.aiFrom) return
@@ -368,7 +407,7 @@ export class Online {
     const R = this.race
     if (!R || this.p0.time - this.lastSend < SEND) return
     this.lastSend = this.p0.time
-    const m = R.me, g = R.lobby.start
+    const m = R.me, g = R.key
     if (R.reannounce > 0) { R.reannounce--; this.room.send({ t: 're', g, old: R.oldMe }) }
     this.room.send({ t: 'r', g, s: [q(m.D, 100), q(m.x, 1000), q(m.h, 100), q(m.sp, 100), q(m.psi, 1000), q(m.phi, 1000), q(m.vh, 100), flags(m), m.lap, q(m.finishTime, 1000)] })
     if (R.driving) {
@@ -384,14 +423,14 @@ export class Online {
 
   receive(d, from) {
     const R = this.race
-    if (!R || !d || d.g !== R.lobby.start) return
+    if (!R || !d || d.g !== R.key) return
     const now = this.p0.time
     // a player reconnected (a new id): their machine is theirs again under it, here and in the lobby
     if (d.t === 're') {
       const f = R.lobby.field.find(e => e.pid === d.old)
       if (f) { f.pid = from; this.log(`player ${d.old} is ${from} now`) }
       const L = this.lobby
-      if (L && this.isOwner && L.phase === 'race' && L.start === g0(R) && L.field?.some(e => e.pid === d.old)) this.room.set('lobby', { ...L, field: L.field.map(e => e.pid === d.old ? { ...e, pid: from } : e) })
+      if (L && this.isOwner && L.phase === 'race' && `${L.id}:${L.start}` === R.key && L.field?.some(e => e.pid === d.old)) this.setLobby(L.id, { ...L, field: L.field.map(e => e.pid === d.old ? { ...e, pid: from } : e) })
       return
     }
     R.seen.set(from, now)
@@ -447,8 +486,6 @@ export class Online {
 
 /** What to do when another screen's machine is wrecked (fn(racer, last)): the game shows the blast. */
 export function onRemoteWreck(fn) { setFlags.onWreck = fn }
-
-const g0 = R => R.lobby.start
 
 function flags(r) {
   return (r.alive ? ALIVE : 0) | (r.finished ? FINISHED : 0) | (r.boostT > 0 ? BOOST : 0) | (r.dashT > 0 || r.turbo > 0 ? PLATE : 0) |

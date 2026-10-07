@@ -35,13 +35,20 @@ for job in sorted(glob.glob(str(HERE / 'sfx' / '*.job'))):
 GRIT = ('aresample=44100,asetrate=39690,aresample=44100,atempo=1.1111,highpass=f=140,lowpass=f=6500,'
         'acompressor=threshold=-22dB:ratio=6:attack=4:release=90,volume=4,aeval=val(0)/(1+abs(val(0))),'
         'aecho=0.8:0.45:55|110:0.28|0.16,loudnorm=I=-13:TP=-1.5:LRA=11')
-for job in sorted(glob.glob(str(HERE / 'sfx' / 'voice2' / '*.job'))):
+# the announcer, round 3 (sfx/voice3, Stefan: "a retro villain"): George on ElevenLabs v3, pitched well down, a
+# touch of bit crush for the arcade cabinet, driven, a horn's band, a big arena echo. It replaces round 2's lines
+VILLAIN = ('aresample=44100,asetrate=37926,aresample=44100,atempo=1.1628,highpass=f=110,lowpass=f=5200,'
+           'acrusher=level_in=1:level_out=1:bits=11:mode=log:aa=1:mix=0.35,'
+           'acompressor=threshold=-24dB:ratio=7:attack=3:release=80,volume=5,aeval=val(0)/(1+abs(val(0))),'
+           'aecho=0.8:0.5:60|140|260:0.3|0.18|0.1,loudnorm=I=-12.5:TP=-1.5:LRA=11')
+VOICE_DIR, VOICE_FX = ('voice3', VILLAIN)
+for job in sorted(glob.glob(str(HERE / 'sfx' / VOICE_DIR / '*.job'))):
     name = Path(job).stem
     src = glob.glob(job + '/assets/*')
     if not src or name.startswith('test'):
         continue
     trim = 'silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse,'
-    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src[0], '-af', trim + GRIT, '-ac', '1', '-ar', '44100', '-b:a', '96k', str(SFX / f'v_{name}.mp3')], check=True)
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', src[0], '-af', trim + VOICE_FX, '-ac', '1', '-ar', '44100', '-b:a', '96k', str(SFX / f'v_{name}.mp3')], check=True)
 # the rock round (2026-10-06): the title theme (a build, then the riff slams in at 6.06 s), two race tracks
 # round 5: two harder race tracks (relentless hard rock at 172 BPM), played in turn with the first two
 for name, job in (('race', 'rock_eleven'), ('race2', 'rock_sonilo'), ('title', 'rocktitle_eleven'), ('race3', 'hard_eleven'), ('race4', 'hard_sonilo')):

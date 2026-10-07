@@ -77,7 +77,7 @@ export class Racer {
     this.lapTimes = []; this.lapStart = 0; this.lap = 0
     this.kos = 0; this.lastHitBy = null; this.lastHitAt = -99
     this.flash = 0; this.scrape = 0; this.lean = 0; this.steerVis = 0
-    this.drift = 0; this.driftT = 0; this.driftArm = 0; this.turbo = 0; this.hop = 0; this.driftVis = 0
+    this.drift = 0; this.driftT = 0; this.driftArm = 0; this.turbo = 0; this.hop = 0; this.driftVis = 0; this.driftSide = 0; this.driftStraight = 0
     this.safeD = D; this.safeX = x; this.ghost = 0
     this.nitro = NITRO_CELL * 2
     this.flow = 0; this.flowFull = false
@@ -125,8 +125,8 @@ export class Race {
 
   // ------------------------------------------------------------ one fixed step
   step(dt) {
+    if (!this.started) return           // (the clock stands still on the grid: the countdown sets it)
     this.time += dt
-    if (!this.started) return
     const t = this.track
     for (const r of this.racers) {
       if (!r.alive || r.remote) continue
@@ -134,6 +134,13 @@ export class Race {
       this.fly(r, dt)
     }
     this.collide(dt)
+    // a safety net: a machine whose numbers went bad (never seen since the cause below was fixed) is put back on
+    // the road where it last was safely, instead of vanishing and poisoning the collisions
+    for (const r of this.racers) {
+      if (r.remote || (Number.isFinite(r.D) && Number.isFinite(r.x) && Number.isFinite(r.sp) && Number.isFinite(r.psi) && Number.isFinite(r.phi))) continue
+      r.D = Number.isFinite(r.safeD) ? r.safeD : 0; r.x = Number.isFinite(r.safeX) ? r.safeX : 0
+      r.sp = r.vmax * 0.3; r.psi = 0; r.phi = 0; r.h = 0; r.vh = 0; r.air = false; r.drift = 0; r.driftSide = 0
+    }
     this.mines(dt)
     // how far the leading player is (for the AI's rubber band)
     let hd = null
@@ -176,7 +183,8 @@ export class Race {
     // cells that were in the gauge when it began: two banked make a DOUBLE, three or more a MEGA NITRO (longer and
     // faster). Cells gained while it burns only keep it going, so charging and firing one cell at a time never
     // builds a MEGA
-    const fire = inp.boost || (inp.boostHeld && (r.boostT <= 0 || this.time - r.boostAt >= 1.0))
+    // (held, it waits while you drift: only a press ends a drift)
+    const fire = inp.boost || (inp.boostHeld && !r.drift && (r.boostT <= 0 || this.time - r.boostAt >= 1.0))
     if (fire && r.nitro >= NITRO_CELL && !r.finished) {
       if (r.boostT <= 0) { r.boostBank = Math.floor(r.nitro / NITRO_CELL); r.boostStack = 0 }
       r.nitro -= NITRO_CELL
@@ -187,7 +195,7 @@ export class Race {
       if (mega && was < 3) r.megaAt = this.time          // the moment it went MEGA (the game's big show)
       r.boostAt = this.time
       this.events('boost', r, r.boostStack)
-      // the nitro or the drift, never both: a nitro ends a drift at once (no turbo for it)
+      // a nitro pressed in a drift ends it at once (no turbo for it)
       if (r.drift) { r.drift = 0; r.driftT = 0; r.driftArm = 0; this.events('driftEnd', r) }
     }
     inp.boost = false
@@ -220,8 +228,7 @@ export class Race {
       const dir = Math.abs(inp.steer) > 0.08 ? Math.sign(inp.steer) : Math.abs(r.lean) > 0.3 ? Math.sign(r.lean) : 0
       const aim = clamp(inp.steer + r.lean * 0.5, -1, 1)
       if (r.drift === 0) {
-        // (not while a nitro burns: one or the other)
-        if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air && r.boostT <= 0) {
+        if (inp.drift && dir && r.sp > r.vmax * 0.25 && !air) {
           r.drift = dir
           r.driftSide = dir * 0.4                       // the angle: -1 hard left .. 1 hard right
           r.driftStraight = 0
@@ -232,8 +239,13 @@ export class Race {
         }
         break turbo
       }
-      r.driftT += dt
-      this.charge(r, (8 + 4 * driftTier(r)) * dt)
+      // a drift taken over from another screen (a rival flown there until now) comes without its angle
+      if (!Number.isFinite(r.driftSide)) { r.driftSide = r.drift * 0.4; r.driftStraight = 0 }
+      // a drift taken while a nitro burns earns nothing (no nitro, no turbo) until the nitro is spent
+      if (r.boostT <= 0) {
+        r.driftT += dt
+        this.charge(r, (8 + 4 * driftTier(r)) * dt)
+      }
       // steering moves the angle: further into the slide up to where it points, or back the other way (easing it,
       // and on through straight to the other side); letting go (or steering less) holds it where it is
       if (Math.abs(aim) > 0.08) {

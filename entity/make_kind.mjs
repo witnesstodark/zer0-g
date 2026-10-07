@@ -150,7 +150,18 @@ select screen and in the race standings, as every pilot's is; the machine itself
 4. Draw the pilot's portrait (the pilot named in entity.json, in the machine's colours).
 5. Write entity.json and check it locally with the game's own rules: \`import { validate } from './rules.js'\`
    (the same file the server runs) should give \`ok: true\` and at most ${BUDGET} points.
-6. Validate it on the server (free), then send it. The player sees it the next time they open ZER0-G.
+6. Validate it on the server (free), then send it.
+
+**The key.** \`$P0_KEY\` is the player's own Project 0 agent key (it starts with p0_). The player gets it in the city:
+the menu, Connect agent, New key, Copy; the message they copy there has the key in it. If you were not given that
+message, ask the player for it in those words. Keep it in an environment variable and never print it.
+
+**When it is live, tell the player how to see it.** ZER0-G loads a player's machine when they enter it, so a machine
+sent while they are inside does not appear until they come in again. Once the send answers \`live\` (or its
+\`check\` URL does), end your report with this, in the player's language: *Your machine is live. Leave ZER0-G and
+enter it again (or reload the page), then open MY MACHINE, or pick it on the machine screen: it is last, marked with a
+pink star. It is in the GALLERY too, where the others can like it.* While it is still in review, tell them to wait for
+live first.
 
 ## Examples
 

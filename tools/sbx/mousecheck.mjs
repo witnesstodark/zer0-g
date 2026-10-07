@@ -43,5 +43,5 @@ console.log('state', await page.evaluate(() => window.__dbg.race?.started), awai
 await wait(7000); await page.keyboard.press('Backspace'); await wait(200); await page.keyboard.press('Backspace'); await wait(1200)
 console.log('menu again', await where())
 await click(880, 280); console.log('online hub', await where()); await move(640, 419); await shot('online-hover')
-await click(640, 419); console.log('create', await where()); await click(1125, 687); console.log('lobby', await where()); await move(640, 629); await shot('lobby-start-hover')
+await click(640, 149); console.log('create', await where()); await click(1125, 687); console.log('lobby', await where()); await move(640, 629); await shot('lobby-start-hover')
 await browser.close()

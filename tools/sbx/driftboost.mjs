@@ -1,5 +1,5 @@
-// The nitro and the drift, never both (round 20): a drift, then SHIFT ends it at once; a nitro burning, SPACE does not
-// start a drift; a drift is 6% slower. node tools/sbx/driftboost.mjs
+// The nitro and the drift (round 21): a drift, then SHIFT pressed ends it at once; in a burning nitro a drift may
+// start but earns nothing; a drift is 6% slower. node tools/sbx/driftboost.mjs
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright-core')
@@ -29,7 +29,7 @@ check(after.drift === 0 && after.boostT > 0, 'SHIFT ends the drift, the nitro bu
 await page.keyboard.up('Space'); await wait(100)
 await page.keyboard.down('Space'); await page.keyboard.down('KeyA'); await wait(200); await page.keyboard.up('KeyA')
 const tried = await st()
-check(tried.drift === 0, 'no drift while the nitro burns', tried)
+check(tried.drift !== 0 && tried.nitro <= after.nitro + 2.5, 'a drift in a burning nitro, earning nothing', tried)
 await page.keyboard.up('Space')
 console.log(fails ? `${fails} FAILED` : 'ALL PASSED')
 await browser.close()

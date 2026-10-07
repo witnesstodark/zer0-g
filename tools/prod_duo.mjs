@@ -43,7 +43,7 @@ await press(A, 'Space', 1500); await shot(A, 'A-lobby')
 await press(B, 'Space'); await press(B, 'ArrowRight'); await press(B, 'Space', 1200); await shot(B, 'B-online')
 for (let t = 15; t <= lobbyWait; t += 15) { await A.waitForTimeout(15000); await shot(A, `A-lobby-${t}s`); await shot(B, `B-online-${t}s`) }
 // B joins, A starts, both lock in
-await press(B, 'Space', 1500); await shot(B, 'B-joined'); await shot(A, 'A-lobby-2')
+await press(B, 'ArrowDown'); await press(B, 'Space', 1500); await shot(B, 'B-joined'); await shot(A, 'A-lobby-2')
 await press(A, 'Space', 1500); await shot(A, 'A-pick'); await shot(B, 'B-pick')
 await press(A, 'Space', 800); await press(B, 'ArrowRight'); await press(B, 'Space', 800)
 await shot(A, 'A-locked'); await shot(B, 'B-locked')

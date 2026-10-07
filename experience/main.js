@@ -504,7 +504,7 @@ export default async function start(p0) {
       if (mine) {
         cams.shake = 1.8; cams.kick = 22; screen.flash(0xff5a1a, 1)
         if (kind === 'destroyed') { audio.voice('retired'); hud.say('DESTROYED', 2.6, 'red', 'NO MACHINES LEFT: OUT OF THE RACE') }
-        else { audio.voice('out'); hud.say('WRECKED!', 1.8, 'red', `${data?.lives ?? r.lives} ${(data?.lives ?? r.lives) === 1 ? 'MACHINE' : 'MACHINES'} LEFT`) }
+        else { audio.voice('wrecked'); hud.say('WRECKED!', 1.8, 'red', `${data?.lives ?? r.lives} ${(data?.lives ?? r.lives) === 1 ? 'MACHINE' : 'MACHINES'} LEFT`) }
       }
     } else if (kind === 'lap') {
       if (mine && race.mode !== 'attract') {
@@ -740,6 +740,7 @@ export default async function start(p0) {
       }
     }
     if (state === 'countdown' && me && (e.code === 'KeyW' || e.code === 'ArrowUp')) launchPress = race.time
+    if (state === 'race' && me && !startJudged && (e.code === 'KeyW' || e.code === 'ArrowUp') && race.time < 0.15) judgeStart(-race.time)
   })
   p0.on('pointerdown', e => {
     audio.unlock()
@@ -775,6 +776,7 @@ export default async function start(p0) {
   // ---- the flow: waiting -> intro -> title -> menus -> prerace -> countdown -> race -> results
   let introClock = 0
   let launchPress = -99
+  let startJudged = true
   function startIntro() {
     state = 'intro'
     stateT = 0
@@ -895,6 +897,8 @@ export default async function start(p0) {
     state = 'prerace'
     stateT = 0
     launchPress = -99
+    hud.startLights(0)
+    hud.lightsOn = true
     menus.hideAll()
     hud.show(true)
     const what = cfg.cup ? `${cfg.cup.name}  RACE ${cfg.cup.k + 1}/3` : cfg.online ? 'ONLINE RACE' : MODE_NAME[cfg.mode]
@@ -1083,6 +1087,13 @@ export default async function start(p0) {
     if (state === 'prerace' && (onlineT !== null ? onlineT >= -3 : stateT > 3.8)) { state = 'countdown'; stateT = 0; cdShown = -1 }
     if (onlineT !== null && state === 'countdown') stateT = onlineT + 3
     if (state === 'countdown') countdown()
+    // an online race keeps its clock on the session's (a slow screen's own steps fall behind; everyone's lap and
+    // finish times are on the one clock)
+    if (onlineT !== null && state === 'race' && race.started && Math.abs(race.time - onlineT) > 0.05) race.time = Math.max(0, onlineT)
+    // the big lamp's flare after GO, then the lights go
+    if (state === 'race' && stateT < 1.4) hud.startLights(3, true, 1 - stateT / 1.4)
+    else if (hud.lightsOn && state === 'prerace') hud.startLights(0)
+    else if (hud.lightsOn && state !== 'countdown') { hud.startLights(null); hud.lightsOn = false }
     readControls(dt)
     accum += dt
     while (accum >= DT) { race.step(DT); accum -= DT }
@@ -1132,13 +1143,42 @@ export default async function start(p0) {
     if (state === 'race' && Math.floor(p0.time) !== lastHud && !audio.ready) { lastHud = Math.floor(p0.time); p0.hud(`${CONTROLS}\nClick or press any key for sound`) }
   })
 
+  /**
+   * The rocket start: the gas pressed right on GO. gap: seconds from the press to GO (before: positive). Within
+   * 0.12 s either side a PERFECT START (away at most of top speed, a nitro's flames), up to 0.4 s before a GOOD one;
+   * 0.4 to 1 s early, nothing (and you are told).
+   */
+  function judgeStart(gap) {
+    if (!me || startJudged) return
+    startJudged = true
+    const f = cams.racerFrame(me), tail = f.p.clone().addScaledVector(f.f, -0.17 * U)
+    if (gap >= -0.12 && gap <= 0.12) {
+      me.sp = me.vmax * 0.85; me.boostT = 1.6; me.boostStack = Math.max(1, me.boostStack)
+      hud.note('PERFECT START!', 1.6, 'gold')
+      audio.sfx('nitro_go', { volume: 1 }); audio.sfx('boost', { volume: 0.9, rate: 1.2 }); audio.voice('start')
+      fx.ring(tail, f.f, 0xffffff, 1.2 * U, 0.45); fx.ring(tail, f.f, 0xffd66b, 1.8 * U, 0.55); fx.ring(f.p, f.u, 0xff8a30, 2.2 * U, 0.5)
+      fx.sparks(tail, f.f.clone().multiplyScalar(-1), 0xffd66b, 30, 4 * U, 0.6)
+      cams.shake = 1; cams.kick = 26; cams.surge = 2; screen.flash(0xffd66b, 0.9)
+    } else if (gap > 0.12 && gap <= 0.4) {
+      me.sp = me.vmax * 0.55; me.boostT = 0.8; me.boostStack = Math.max(1, me.boostStack)
+      hud.note('GOOD START!', 1.3, 'gold')
+      audio.sfx('boost', { volume: 0.8 })
+      fx.ring(tail, f.f, 0xffd66b, 1.1 * U, 0.4)
+      cams.kick = 14; screen.flash(0xffd66b, 0.5)
+    } else if (gap > 0.4 && gap <= 1.0) hud.note('TOO EARLY: HIT THE GAS ON GO', 1.4, 'red')
+  }
+
   function countdown() {
-    // 3, 2, 1 a second apart, then GO
+    // the lights, one a second (3, 2, 1), then the big one for GO
     const n = Math.floor(stateT)
     if (n !== cdShown) {
       cdShown = n
-      if (n < 3) { hud.say(String(3 - n), 0.9, 'cyan'); audio.sfx('beep', { volume: 0.8 }); audio.voice(['three', 'two', 'one'][n]) }
-      else {
+      if (n < 3) {
+        hud.startLights(n + 1)
+        audio.sfx('beep', { volume: 0.8 }); audio.voice(['three', 'two', 'one'][n])
+        if (n === 0) hud.note('HIT THE GAS RIGHT ON GO: A ROCKET START', 2.6, 'gold')
+      } else {
+        hud.startLights(3, true, 1)
         hud.say('GO!!', 1.2, 'gold')
         audio.sfx('beep_go', { volume: 0.9 })
         audio.voice('go')
@@ -1148,15 +1188,13 @@ export default async function start(p0) {
         race.started = true
         raceMusic = (raceMusic + 1) % RACE_MUSIC.length
         audio.music(RACE_MUSIC[raceMusic], { volume: 0.75, at: 0 })
-        // a quick start: accelerate pressed just before GO
-        if (me && race.time - launchPress < 0.35 && launchPress > -0.4) {
-          me.sp = 3; me.boostT = 0.5
-          hud.note('GREAT START!', 1.4, 'gold')
-          audio.sfx('boost', { volume: 0.8 })
-        }
+        // pressed before GO: judged now (a press just after GO is judged when it comes)
+        startJudged = false
+        if (launchPress > -1.5) judgeStart(race.time - launchPress)
       }
     }
-    // the clock counts up to GO: race.time runs from -3 to 0 here
-    race.time = stateT - 3
+    // the clock counts up to GO: race.time runs from -3 to 0 here (only until GO: set again on the GO frame it
+    // started every race 3 s behind, and every finish and cup time came out 3 s short)
+    if (state === 'countdown') race.time = stateT - 3
   }
 }

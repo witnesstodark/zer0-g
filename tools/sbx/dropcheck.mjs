@@ -19,10 +19,10 @@ const A = await open(1, 'STEFAN'), B = await open(2, 'FRIEND')
 const wait = ms => A.waitForTimeout(ms)
 const press = async (p, k) => { await p.bringToFront(); await p.keyboard.press(k); await wait(250) }
 const screen = p => p.evaluate(() => window.__dbg?.menus?.screen ?? 'race')
-const view = async p => p.evaluate(() => { const s = window.__p0.room.state, L = s.lobby; return `me=${window.__p0.me.id} lobby=${L ? `${L.id}:${L.phase} owner=${L.owner}` : 'none'} in=[${Object.keys(s).filter(k => k.startsWith('in:') && s[k]).join(',')}]` })
+const view = async p => p.evaluate(() => { const s = window.__p0.room.state, L = Object.keys(s).filter(k => k.startsWith('lobby:') && s[k]).map(k => s[k])[0]; return `me=${window.__p0.me.id} lobby=${L ? `${L.id}:${L.phase} owner=${L.owner}` : 'none'} in=[${Object.keys(s).filter(k => k.startsWith('in:') && s[k]).join(',')}]` })
 for (const p of [A, B]) { for (let k = 0; k < 20 && (await screen(p)) !== 'title'; k++) { await press(p, 'Space'); await wait(500) } }
 await press(A, 'Space'); await press(A, 'ArrowRight'); await press(A, 'Space'); await wait(400); await press(A, 'Space'); await wait(300); await press(A, 'Space'); await wait(800)
-await press(B, 'Space'); await press(B, 'ArrowRight'); await press(B, 'Space'); await wait(500); await press(B, 'Space'); await wait(800)
+await press(B, 'Space'); await press(B, 'ArrowRight'); await press(B, 'Space'); await wait(500); await press(B, 'ArrowDown'); await press(B, 'Space'); await wait(800)
 console.log('in the lobby:  A', await screen(A), await view(A), '| B', await screen(B))
 await A.evaluate(() => window.__drop(false)); await wait(4000)
 console.log('after a blink: A', await screen(A), await view(A), '| B', await screen(B), await view(B))

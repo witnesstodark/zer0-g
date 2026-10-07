@@ -12,6 +12,7 @@ const open = async (pid, name) => {
   const page = await context.newPage()
   page.on('console', m => {
     const t = m.text()
+    if (/NANDEBUG/.test(t)) console.log('   ', name, t.slice(0, 600))
     if (/\[online\]/.test(t)) console.log('   ', name, t.replace('[p0] [online] ', '').slice(0, 160))
     if (/error/i.test(t) && !/404|\[sound\]/.test(t)) { errors.push(`${name}: ${t.slice(0, 200)}`); console.log(name, t.slice(0, 200)) }
   })
@@ -26,7 +27,7 @@ const A = await open(1, 'ANN'), B = await open(2, 'BOB'), C = await open(3, 'CID
 const wait = ms => B.waitForTimeout(ms)
 const press = async (p, k) => { await p.bringToFront(); await p.keyboard.press(k); await wait(220) }
 const screen = p => p.evaluate(() => window.__dbg?.menus?.screen ?? null)
-const lobby = p => p.evaluate(() => { const L = window.__p0.room.state.lobby; return L ? { id: L.id, phase: L.phase, owner: L.owner, field: L.field?.map(f => f.pid) ?? null } : null })
+const lobby = p => p.evaluate(() => { const s = window.__p0.room.state, mine = s[`in:${window.__p0.me.id}`]?.l, all = Object.keys(s).filter(k => k.startsWith('lobby:') && s[k]).map(k => s[k]), L = all.find(x => x.id === mine) ?? all[0]; return L ? { id: L.id, phase: L.phase, owner: L.owner, field: L.field?.map(f => f.pid) ?? null, all: all.length } : null })
 const racing = p => p.evaluate(() => {
   const d = window.__dbg, r = d.race
   return {
@@ -44,7 +45,7 @@ for (const p of [A, B, C]) await toTitle(p)
 // ---- 1. a lobby, two in it, a third watching
 await toOnline(A); await press(A, 'Space'); await wait(300); await press(A, 'Space'); await wait(700)
 check((await screen(A)) === 'lobby', 'A created a lobby', await screen(A))
-await toOnline(B); await press(B, 'Space'); await wait(700)
+await toOnline(B); await press(B, 'ArrowDown'); await press(B, 'Space'); await wait(700)
 check((await screen(B)) === 'lobby', 'B joined it')
 await toOnline(C)
 check((await screen(C)) === 'online', 'C watches the online screen')
@@ -61,8 +62,14 @@ const bOnA = ra.humans.find(h => h.n === 'BOB'), bOwn = rb.humans.find(h => h.n 
 check(bOnA?.remote && bOwn && !bOwn.remote && Math.abs(bOnA.D - bOwn.D) < 3, 'A sees B where B is', `${bOnA?.D} vs ${bOwn?.D}`)
 check(Math.abs(ra.aiD - rb.aiD) < 3 && rb.aiRemote && !ra.aiRemote, 'the AI flown by A, drawn by B', `${ra.aiD.toFixed(1)} / ${rb.aiD.toFixed(1)}`)
 check((await lobby(C))?.phase === 'race' && (await screen(C)) === 'online', 'C sees a race on')
-await press(C, 'Space'); await wait(500)
+await press(C, 'ArrowDown'); await press(C, 'Space'); await wait(500)
 check((await screen(C)) === 'online' && !(await C.evaluate(() => window.__dbg.online.isMember)), 'C cannot join a race on')
+// C makes a lobby of its own meanwhile: two lobbies; then leaves it, and it closes
+await press(C, 'ArrowUp'); await press(C, 'Space'); await wait(400); await press(C, 'Space'); await wait(800)
+check((await screen(C)) === 'lobby' && (await lobby(C))?.all === 2 && (await lobby(C))?.owner === 3, 'C made a second lobby while the first races', JSON.stringify(await lobby(C)))
+await press(C, 'Backspace'); await wait(600)
+check((await screen(C)) === 'online', 'C left it: back to the list')
+check(await until(async () => (await lobby(C))?.all === 1, 12000), 'its empty lobby closed', JSON.stringify(await lobby(C)))
 for (const p of [A, B]) { await p.bringToFront(); await p.keyboard.up('KeyW') }
 await finish(A); await finish(B)
 check(await until(async () => (await screen(A)) === 'results' && (await screen(B)) === 'results', 20000), 'both see the results')
@@ -70,7 +77,7 @@ check(await until(async () => (await lobby(C))?.phase === 'open', 15000), 'the l
 // ---- 3. back to the lobby; C joins; a race of three
 await press(A, 'Space'); await press(B, 'Space'); await wait(800)
 check((await screen(A)) === 'lobby' && (await screen(B)) === 'lobby', 'A and B back in the lobby', `${await screen(A)} ${await screen(B)}`)
-await press(C, 'Space'); await wait(700)
+await press(C, 'ArrowDown'); await press(C, 'Space'); await wait(700)
 check((await screen(C)) === 'lobby', 'C joined')
 await press(A, 'Space'); await wait(800)
 for (const p of [A, B, C]) await press(p, 'Space')
@@ -91,7 +98,6 @@ check(Math.abs(rb.aiD - rc.aiD) < 4, 'B and C agree on the AI', `${rb.aiD.toFixe
 for (const p of [B, C]) { await p.bringToFront(); await p.keyboard.up('KeyW') }
 await finish(B); await finish(C)
 check(await until(async () => (await screen(B)) === 'results' && (await screen(C)) === 'results', 20000), 'B and C finish')
-for (const p of [B, C]) console.log('   probe', await p.evaluate(() => { const o = window.__dbg.online, r = window.__p0.room; return JSON.stringify({ me: o.me, host: r.host, isHost: r.isHost, players: r.players, gone: [...o.gone], lobby: r.state.lobby && { owner: r.state.lobby.owner, phase: r.state.lobby.phase }, ins: Object.keys(r.state).filter(k => k.startsWith('in:') && r.state[k]), live: o.live }) }))
 check(await until(async () => (await lobby(B))?.phase === 'open', 20000), 'the lobby opens again without A', JSON.stringify(await lobby(B)))
 const L = await lobby(B)
 check(L && L.owner !== 1, 'the lobby went on to someone still here', JSON.stringify(L))

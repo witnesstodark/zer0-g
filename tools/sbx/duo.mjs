@@ -25,7 +25,7 @@ const wait = ms => A.waitForTimeout(ms)
 let n = 0
 const shot = async (p, name) => { await p.screenshot({ path: `${out}${String(n++).padStart(2, '0')}-${name}.png` }) }
 const press = async (p, k) => { await p.bringToFront(); await p.keyboard.press(k); await wait(250) }
-const state = async p => p.evaluate(() => { const s = window.__p0.room.state; return { lobby: s.lobby && { phase: s.lobby.phase, owner: s.lobby.owner, co: s.lobby.co, c: s.lobby.c, field: s.lobby.field?.map(f => f.pid + ':' + f.m) }, ins: Object.keys(s).filter(k => k.startsWith('in:') && s[k]).map(k => k + '=' + JSON.stringify(s[k])), tick: window.__p0.room.tick } })
+const state = async p => p.evaluate(() => { const s = window.__p0.room.state, Lk = Object.keys(s).find(k => k.startsWith('lobby:') && s[k]); s.lobby = Lk ? s[Lk] : null; return { lobby: s.lobby && { phase: s.lobby.phase, owner: s.lobby.owner, co: s.lobby.co, c: s.lobby.c, field: s.lobby.field?.map(f => f.pid + ':' + f.m) }, ins: Object.keys(s).filter(k => k.startsWith('in:') && s[k]).map(k => k + '=' + JSON.stringify(s[k])), tick: window.__p0.room.tick } })
 const screen = p => p.evaluate(() => window.__dbg?.menus?.screen ?? '?')
 // both to the title, then the mode screen
 for (const p of [A, B]) { await press(p, 'KeyW'); await press(p, 'KeyW'); await wait(300) }
@@ -37,7 +37,7 @@ await press(A, 'Space'); await wait(600); await shot(A, 'A-lobby')
 console.log('after create', JSON.stringify(await state(A)))
 // B: ONLINE RACE -> join
 await press(B, 'Space'); await press(B, 'ArrowRight'); await press(B, 'Space'); await wait(400); await shot(B, 'B-hub')
-await press(B, 'Space'); await wait(600); await shot(B, 'B-lobby')
+await press(B, 'ArrowDown'); await press(B, 'Space'); await wait(600); await shot(B, 'B-lobby')
 // nothing starts by itself
 await wait(4000)
 console.log('4 s later', JSON.stringify(await state(B)), 'A on', await screen(A), 'B on', await screen(B))

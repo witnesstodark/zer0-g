@@ -48,6 +48,8 @@ const TILE_NAV = [{ r: 1, d: 2 }, { l: 0, d: 3 }, { u: 0, r: 3 }, { u: 1, l: 2, 
 const GARAGE = { x: 40, y: 92, w: 780, h: 548 }
 const GAL = { x: 40, y: 92, cols: 3, rows: 2, w: 188, h: 262, gap: 14 }
 const GAL_STAND = { x: 664, y: 92, w: 576, h: 300 }
+// the list of lobbies: a row each (the first: create a new one)
+const LOBBY_ROW = { x: 240, y: 120, w: 800, h: 58, gap: 8, shown: 7 }
 const LIKE_BTN = { x: 1068, y: 414, w: 154, h: 40 }   // under the stand, on the right
 // the buttons for the mouse: back (bottom left) and on (bottom right)
 const BACK = { x: 40, y: 663, w: 150, h: 40 }
@@ -294,9 +296,9 @@ export class Menus {
       go(mode === 'gp' ? 'START THE CUP' : mode === 'online' ? 'CREATE LOBBY' : 'RACE >')
     } else if (scr === 'online') {
       back('< BACK')
-      const L = o?.lobby
-      const label = !o ? null : o.isMember && L ? 'BACK TO THE LOBBY' : L?.phase === 'open' ? 'JOIN' : !L ? 'CREATE A LOBBY' : null
-      if (label) go(label, { x: 440, y: 390, w: 400, h: 58 }, 22)
+      const row = this.lobbyRows()[s.lobbyAt ?? 0]
+      const label = !row ? null : row.create ? (o?.isMember ? 'A NEW LOBBY' : 'CREATE A LOBBY') : row.mine ? 'BACK TO IT' : row.phase === 'open' ? 'JOIN' : null
+      if (label) go(label)
     } else if (scr === 'lobby') {
       back('< LEAVE')
       if (o?.isOwner && o.lobby?.phase === 'open') go('START THE RACE', { x: 440, y: 600, w: 400, h: 58 }, 22)
@@ -339,6 +341,13 @@ export class Menus {
         const k = PILOTS.length, col = k % GRID.cols, row = Math.floor(k / GRID.cols)
         add('own', GRID.x + col * (GRID.w + GRID.gap), GRID.y + row * (GRID.h + GRID.gap), GRID.w, GRID.h, () => { this.flash = this.entityHint; this.redraw() })
       }
+    }
+    if (scr === 'online') {
+      const rows = this.lobbyRows(), top = Math.max(0, Math.min((s.lobbyAt ?? 0) - LOBBY_ROW.shown + 1, rows.length - LOBBY_ROW.shown))
+      rows.slice(top, top + LOBBY_ROW.shown).forEach((row, j) => {
+        const k = top + j, y = LOBBY_ROW.y + j * (LOBBY_ROW.h + LOBBY_ROW.gap)
+        add(`lob:${k}`, LOBBY_ROW.x, y, LOBBY_ROW.w, LOBBY_ROW.h, () => this.chooseLobby(row), { over: () => { if (s.lobbyAt !== k) { s.lobbyAt = k; this.flash = ''; this.audio.sfx('gtr_move', { volume: 0.4 }) } } })
+      })
     }
     if (scr === 'course') {
       const mode = MODES[s.mode]
@@ -444,7 +453,27 @@ export class Menus {
     const o = this.online
     if (!o || !['lobby', 'online', 'mode', 'machine'].includes(this.screen)) return ''
     const v = o.view()
-    return `${v.lobby?.id ?? 0}|${v.lobby?.phase}|${v.lobby?.owner}|${Math.ceil(v.left)}|${Math.ceil(v.raceLeft)}|${v.racing}|${v.members.map(m => m.pid + ':' + (m.ok ? 1 : 0)).join(',')}|${v.inside}|${v.mine}|${this.onlinePick}|${this.locked}`
+    const list = v.lobbies.map(x => `${x.id}:${x.phase}:${x.count}:${x.owner}:${Math.ceil(x.raceLeft)}:${Math.ceil(x.left)}:${x.racing}`).join(',')
+    return `${v.lobby?.id ?? 0}|${v.lobby?.phase}|${v.lobby?.owner}|${Math.ceil(v.left)}|${Math.ceil(v.raceLeft)}|${v.racing}|${v.members.map(m => m.pid + ':' + (m.ok ? 1 : 0) + (m.away ? 'a' : '')).join(',')}|${v.inside}|${v.mine}|${this.onlinePick}|${this.locked}|${list}`
+  }
+
+  /** The list of lobbies' rows: first "create a new one", then every lobby (yours first). */
+  lobbyRows() {
+    const v = this.online?.view()
+    if (!v) return [{ create: true }]
+    return [{ create: true, full: v.full }, ...[...v.lobbies].sort((a, b) => (b.mine - a.mine) || (a.phase === 'open' ? 0 : 1) - (b.phase === 'open' ? 0 : 1))]
+  }
+
+  /** A row of the list chosen: create, back to yours, join an open one, or say why not. */
+  chooseLobby(row) {
+    const o = this.online, s = this.sel
+    if (!row || !o) return
+    if (row.create) {
+      if (row.full) { this.flash = 'THE LOT HAS AS MANY LOBBIES AS IT TAKES: JOIN ONE'; this.redraw(); return }
+      this.audio.sfx('gtr_select'); s.row = this.courseRows()[0]; this.open('course')
+    } else if (row.mine) { this.audio.sfx('gtr_select'); this.open('lobby') }
+    else if (row.phase === 'open') { if (o.join(s, row.id)) { this.audio.sfx('gtr_start', { volume: 1 }); this.open('lobby') } }
+    else { this.flash = row.phase === 'pick' ? 'THEY ARE PICKING MACHINES: IT OPENS AGAIN AFTER THE RACE' : 'A RACE IS ON IN IT: IT OPENS AGAIN WHEN IT ENDS'; this.audio.sfx('gtr_back'); this.redraw() }
   }
 
   /** The owner started the online race: pick a machine against the clock. */
@@ -469,14 +498,12 @@ export class Menus {
     let moved = false
     const o = this.online
     if (scr === 'online') {
-      // the online race's door: join the open lobby, or create one (you pick its course and class)
+      // the list of lobbies: pick one and join it (or go back to yours), or create a new one (its course and class)
       if (back) { this.audio.sfx('gtr_back'); this.open('mode'); return true }
-      if (ok && o) {
-        const L = o.lobby
-        if (o.isMember && L) { this.audio.sfx('gtr_select'); this.open('lobby') }
-        else if (L && L.phase === 'open') { if (o.join(s)) { this.audio.sfx('gtr_start', { volume: 1 }); this.open('lobby') } }
-        else if (!L) { this.audio.sfx('gtr_select'); s.row = this.courseRows()[0]; this.open('course') }
-      }
+      const rows = this.lobbyRows()
+      s.lobbyAt = Math.max(0, Math.min(rows.length - 1, s.lobbyAt ?? 0))
+      if (up || down) { s.lobbyAt = (s.lobbyAt + (down ? 1 : rows.length - 1)) % rows.length; this.flash = ''; this.audio.sfx('gtr_move', { volume: 0.6 }); this.redraw(); return true }
+      if (ok && o) this.chooseLobby(rows[s.lobbyAt])
       return true
     }
     if (scr === 'lobby') {
@@ -865,31 +892,37 @@ export class Menus {
       return
     }
     if (screen === 'online') {
-      const o = this.online, v = o.view(), L = v.lobby
-      this.header(c, 'ONLINE RACE', `${v.inside} PLAYER${v.inside === 1 ? '' : 'S'} INSIDE THIS LOT`, C_PINK)
-      glass(c, 340, 200, 600, 290, { on: true, accent: C_PINK, k: 16 })
-      if (!L) {
-        f.draw(c, 'NO LOBBY OPEN', 640, 262, 24, { color: '#ffffff', align: 'center', skew: 0.12, outline: false })
-        t.draw(c, 'CREATE ONE: YOU PICK THE COURSE AND THE CLASS,', 640, 312, 11, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
-        t.draw(c, 'THE OTHERS HERE JOIN FROM THIS SCREEN', 640, 332, 11, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
-      } else if (v.mine) {
-        f.draw(c, 'YOU ARE IN THE LOBBY', 640, 290, 22, { color: '#ffffff', align: 'center', skew: 0.12, outline: false })
-      } else if (L.phase === 'open') {
-        f.draw(c, `${v.owner}'S LOBBY`, 640, 262, 24, { color: '#ffffff', align: 'center', skew: 0.12, outline: false })
-        t.draw(c, `${this.tracks[L.co ?? 0]?.name ?? ''}  /  ${CLASSES[L.c]?.name ?? ''}  /  ${v.members.length} IN`, 640, 312, 13, { color: C_CYAN, align: 'center', skew: 0, spacing: 0.14, outline: false })
-      } else if (L.phase === 'pick') {
-        f.draw(c, 'THEY ARE PICKING MACHINES', 640, 272, 22, { color: C_GOLD, align: 'center', skew: 0.12, outline: false })
-        t.draw(c, `${v.members.length} IN ${v.owner}'S LOBBY  /  THE RACE STARTS IN A MOMENT`, 640, 322, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
-        t.draw(c, 'ITS LOBBY OPENS AGAIN WHEN THE RACE ENDS', 640, 346, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
-      } else {
-        const m = Math.floor(v.raceLeft / 60), sec = String(Math.floor(v.raceLeft % 60)).padStart(2, '0')
-        f.draw(c, 'A RACE IS ON', 640, 272, 24, { color: C_GOLD, align: 'center', skew: 0.12, outline: false })
-        t.draw(c, `${v.racing} STILL RACING  /  THE LOBBY OPENS AGAIN WHEN THEY FINISH`, 640, 322, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.12, outline: false })
-        t.draw(c, `AT THE LATEST IN ${m}:${sec}`, 640, 346, 12, { color: MUTED, align: 'center', skew: 0, spacing: 0.16, outline: false })
-      }
-      if (this.flash) t.draw(c, this.flash, 640, 530, 13, { color: '#ff6b7d', align: 'center', skew: 0, spacing: 0.1, outline: false })
-      t.draw(c, 'AI RIVALS FILL THE GRID TO 30 MACHINES', 640, 570, 10.5, { color: FAINT, align: 'center', skew: 0, spacing: 0.16, outline: false })
-      hint('SPACE: CREATE OR JOIN  ·  BACKSPACE: BACK')
+      const o = this.online, v = o.view(), rows = this.lobbyRows()
+      const at = Math.max(0, Math.min(rows.length - 1, s.lobbyAt ?? 0))
+      this.header(c, 'ONLINE RACE', `${v.inside} PLAYER${v.inside === 1 ? '' : 'S'} INSIDE THIS LOT  /  ${v.lobbies.length} LOBB${v.lobbies.length === 1 ? 'Y' : 'IES'}`, C_PINK)
+      const top = Math.max(0, Math.min(at - LOBBY_ROW.shown + 1, rows.length - LOBBY_ROW.shown))
+      rows.slice(top, top + LOBBY_ROW.shown).forEach((row, j) => {
+        const k = top + j, x = LOBBY_ROW.x, y = LOBBY_ROW.y + j * (LOBBY_ROW.h + LOBBY_ROW.gap), w = LOBBY_ROW.w, h = LOBBY_ROW.h
+        const on = k === at, hov = this.hover === `lob:${k}`
+        if (row.create) {
+          glass(c, x, y, w, h, { on, hover: hov, accent: C_PINK, k: 10 })
+          plusMark(c, x + 40, y + h / 2, on, 16)
+          f.draw(c, v.mine ? 'A NEW LOBBY OF YOUR OWN' : 'CREATE A LOBBY', x + 76, y + h / 2 - 7, 17, { color: on ? '#ffffff' : '#c8d8e8', skew: 0.12, outline: false })
+          t.draw(c, row.full ? 'THE LOT HAS AS MANY LOBBIES AS IT TAKES' : 'YOU PICK THE COURSE AND THE CLASS; THE OTHERS JOIN FROM HERE', x + 77, y + h / 2 + 14, 9, { color: on ? '#ff8ae6' : MUTED, skew: 0, spacing: 0.14, outline: false })
+        } else {
+          const open = row.phase === 'open', accent = row.mine ? C_PINK : open ? C_CYAN : C_GOLD
+          glass(c, x, y, w, h, { on, hover: hov, accent, k: 10 })
+          // the state, as a lamp: open (green), picking (gold), racing (red)
+          const lamp = open ? '#3dff8a' : row.phase === 'pick' ? '#ffd23a' : '#ff4d6d'
+          c.save(); c.beginPath(); c.arc(x + 26, y + h / 2, 6, 0, Math.PI * 2); c.fillStyle = lamp; c.shadowColor = lamp; c.shadowBlur = 10; c.fill(); c.restore()
+          f.draw(c, `${row.owner}'S LOBBY`, x + 48, y + h / 2 - 7, 16, { color: on ? '#ffffff' : '#c8d8e8', skew: 0.12, outline: false })
+          t.draw(c, `${this.tracks[row.co]?.name ?? ''}  /  ${CLASSES[row.c]?.name ?? ''}`, x + 49, y + h / 2 + 14, 9.5, { color: on ? C_CYAN : MUTED, skew: 0, spacing: 0.14, outline: false })
+          const m = Math.floor(row.raceLeft / 60), sec = String(Math.floor(row.raceLeft % 60)).padStart(2, '0')
+          const state = open ? `OPEN  /  ${row.count} IN` : row.phase === 'pick' ? `PICKING MACHINES  ${Math.ceil(row.left)}` : `RACING  /  ${row.racing} LEFT  /  ${m}:${sec}`
+          t.draw(c, state, x + w - 20, y + h / 2 - 6, 11, { color: open ? '#7dffb0' : row.phase === 'pick' ? C_GOLD : '#ff8a9a', align: 'right', skew: 0, spacing: 0.18, outline: false })
+          t.draw(c, row.mine ? 'YOURS' : open ? 'SPACE TO JOIN' : 'OPENS AGAIN AFTER THE RACE', x + w - 20, y + h / 2 + 14, 8.5, { color: row.mine ? '#ff8ae6' : FAINT, align: 'right', skew: 0, spacing: 0.18, outline: false })
+        }
+        if (on) brackets(c, x, y, w, h, row.create || row.mine ? C_PINK : '#ffffff', 10, 4)
+      })
+      if (rows.length > LOBBY_ROW.shown) t.draw(c, `${at + 1} / ${rows.length}`, LOBBY_ROW.x + LOBBY_ROW.w, LOBBY_ROW.y - 18, 9.5, { color: MUTED, align: 'right', skew: 0, spacing: 0.2, outline: false })
+      if (this.flash) t.draw(c, this.flash, 640, 612, 12, { color: '#ff6b7d', align: 'center', skew: 0, spacing: 0.1, outline: false })
+      else t.draw(c, 'AI RIVALS FILL EACH GRID TO 30 MACHINES', 640, 612, 10, { color: FAINT, align: 'center', skew: 0, spacing: 0.16, outline: false })
+      hint('UP / DOWN: PICK  ·  SPACE: CREATE OR JOIN  ·  BACKSPACE: BACK')
       return
     }
     if (screen === 'lobby') {
@@ -1257,10 +1290,11 @@ function swatch(c, x, y, color, label) {
 let SWATCH_FONT = null
 
 /** MY MACHINE's mark when there is none yet: a plus in a ring. */
-function plusMark(c, x, y, on) {
-  c.save(); c.strokeStyle = '#ff8ae6'; c.lineWidth = 2.5; c.shadowColor = '#ff2bd6'; c.shadowBlur = on ? 14 : 6; c.globalAlpha = on ? 1 : 0.7
-  c.beginPath(); c.arc(x, y, 30, 0, Math.PI * 2); c.stroke()
-  c.beginPath(); c.moveTo(x - 13, y); c.lineTo(x + 13, y); c.moveTo(x, y - 13); c.lineTo(x, y + 13); c.stroke(); c.restore()
+function plusMark(c, x, y, on, r = 30) {
+  c.save(); c.strokeStyle = '#ff8ae6'; c.lineWidth = r < 20 ? 2 : 2.5; c.shadowColor = '#ff2bd6'; c.shadowBlur = on ? 14 : 6; c.globalAlpha = on ? 1 : 0.7
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.stroke()
+  const a = r * 0.43
+  c.beginPath(); c.moveTo(x - a, y); c.lineTo(x + a, y); c.moveTo(x, y - a); c.lineTo(x, y + a); c.stroke(); c.restore()
 }
 
 /** The GALLERY's mark: three cards fanned out, a star on the front one. */

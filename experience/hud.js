@@ -102,6 +102,30 @@ export class Hud {
     this.small = overlay.panel(700, 50, (c, text, style) => {
       f.draw(c, text, 350, 26, 22, { color: style === 'gold' ? GOLD : style === 'red' ? RED : PINK, align: 'center', glow: style === 'gold' ? 'rgba(255,170,30,0.55)' : 'rgba(255,43,214,0.55)' })
     }).place('t', 0, 96)
+    // the start lights: a dark gantry, three small lamps lit red one a second, then the big lamp blazes for GO
+    this.lights = overlay.panel(520, 150, (c, lit, go, k) => {
+      c.save()
+      roundRect(c, 20, 26, 480, 98, 18)
+      const g = c.createLinearGradient(0, 26, 0, 124); g.addColorStop(0, '#16141f'); g.addColorStop(1, '#07060c')
+      c.fillStyle = g; c.fill()
+      c.strokeStyle = go ? '#ff5a3c' : '#3a3346'; c.lineWidth = 3; c.stroke()
+      // hazard stripes along the top and the bottom of the gantry
+      c.save(); roundRect(c, 20, 26, 480, 98, 18); c.clip()
+      for (let x = -40; x < 520; x += 26) { c.fillStyle = 'rgba(255,190,40,0.55)'; c.beginPath(); c.moveTo(x, 26); c.lineTo(x + 12, 26); c.lineTo(x + 2, 36); c.lineTo(x - 10, 36); c.fill(); c.beginPath(); c.moveTo(x, 114); c.lineTo(x + 12, 114); c.lineTo(x + 2, 124); c.lineTo(x - 10, 124); c.fill() }
+      c.restore()
+      const lamp = (x, y, r, on, hot) => {
+        c.save()
+        c.beginPath(); c.arc(x, y, r + 6, 0, Math.PI * 2); c.fillStyle = '#020204'; c.fill()
+        const lg = c.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
+        if (on) { lg.addColorStop(0, hot ? '#ffffff' : '#ffd2c8'); lg.addColorStop(0.35, hot ? '#ffd0a0' : '#ff3b2a'); lg.addColorStop(1, hot ? '#ff2a10' : '#8a0606'); c.shadowColor = hot ? '#ff6a30' : '#ff2020'; c.shadowBlur = hot ? 50 * k : 26 }
+        else { lg.addColorStop(0, '#3a1414'); lg.addColorStop(1, '#140606') }
+        c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = lg; c.fill()
+        c.restore()
+      }
+      for (let i = 0; i < 3; i++) lamp(80 + i * 92, 75, 26, go ? Math.floor(k * 10) % 2 === 0 : i < lit, false)
+      lamp(410, 75, 40, go, true)
+      c.restore()
+    }).place('t', 0, 70, 0.8)
     this.panels = [this.time, this.board, this.lap, this.power, this.rank, this.speed, this.map, this.msg, this.small]
     this.msgT = 0; this.msgDur = 0; this.smallT = 0; this.smallDur = 0
     this.frame = 0
@@ -111,7 +135,15 @@ export class Hud {
   show(on) {
     this.shown = on
     for (const p of this.panels) p.show(on)
+    if (!on) this.lights?.show(false)
     if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur) }
+  }
+
+  /** The start lights: lit (0-3 small lamps red), go (the big one blazes), k (0-1, its flare). null hides them. */
+  startLights(lit, go = false, k = 1) {
+    if (lit === null) { this.lights.show(false); return }
+    this.lights.update(`${lit}|${go}|${Math.round(k * 20)}`, lit, go, k)
+    this.lights.show(this.shown !== false)
   }
 
   /** A big word in the middle for dur seconds (style: cyan, gold, red, pink). */
