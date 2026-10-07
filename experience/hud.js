@@ -18,6 +18,8 @@ const MEDAL = [GOLD, SILVER, BRONZE]
 const MEDAL_EDGE = ['#ffc23a', '#c8dceb', '#f08a4a']
 const MEDAL_GLOW = ['rgba(255,170,30,0.75)', 'rgba(200,225,245,0.6)', 'rgba(255,120,50,0.65)']
 const TAG_W = 88, TAG_H = 96
+// the pause plate (layout px) and its rows: exported for the clicks
+export const PAUSE_W = 560, PAUSE_H = 380, PAUSE_ROW0 = 150, PAUSE_ROW = 62
 const PINK = ['#ffe8fb', '#ff8ae6', '#ff2bd6']
 const hex = c => `#${(c >>> 0).toString(16).padStart(6, '0').slice(-6)}`
 const TOP = 7                       // the standings show the first seven (and you, if further back)
@@ -162,6 +164,32 @@ export class Hud {
     })
     this.overlay = overlay
     this.cine = false; this.cineK = 0
+    // the pause (round 26, not online): the picture dimmed, a plate with its three choices
+    this.dim = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x02030a, transparent: true, opacity: 0.55, depthTest: false, depthWrite: false, toneMapped: false }))
+    this.dim.visible = false
+    this.dim.renderOrder = 5
+    overlay.scene.add(this.dim)
+    this.pauseP = overlay.panel(PAUSE_W, PAUSE_H, (c, sel, labels) => {
+      c.save()
+      roundRect(c, 4, 4, PAUSE_W - 8, PAUSE_H - 8, 22)
+      const g = c.createLinearGradient(0, 0, 0, PAUSE_H); g.addColorStop(0, 'rgba(14,20,48,0.94)'); g.addColorStop(1, 'rgba(6,8,22,0.94)')
+      c.fillStyle = g; c.fill()
+      c.strokeStyle = 'rgba(41,211,255,0.55)'; c.lineWidth = 2; c.stroke()
+      c.restore()
+      f.draw(c, 'PAUSED', PAUSE_W / 2, 70, 52, { color: CYAN, align: 'center', glow: 'rgba(41,211,255,0.7)' })
+      labels.forEach((label, k) => {
+        const y = PAUSE_ROW0 + k * PAUSE_ROW, on = k === sel
+        c.save()
+        roundRect(c, 60, y - 23, PAUSE_W - 120, 46, 12)
+        c.fillStyle = on ? 'rgba(41,211,255,0.16)' : 'rgba(255,255,255,0.03)'; c.fill()
+        if (on) { c.shadowColor = 'rgba(41,211,255,0.8)'; c.shadowBlur = 12; c.strokeStyle = '#29d3ff'; c.lineWidth = 2; c.stroke() }
+        c.restore()
+        f.draw(c, label, PAUSE_W / 2, y, 24, { color: on ? '#ffffff' : '#9fb6cc', align: 'center', skew: 0.12, glow: on ? 'rgba(41,211,255,0.7)' : null })
+      })
+      f.draw(c, 'UP / DOWN  ·  SPACE: CHOOSE  ·  BACKSPACE: BACK TO THE RACE', PAUSE_W / 2, PAUSE_H - 30, 13, { color: '#8fb8d0', align: 'center', skew: 0 })
+    }).place('c', 0, 0)
+    this.pauseP.mesh.renderOrder = 6
+    this.pauseP.show(false)
     this.panels = [this.time, this.board, this.lap, this.power, this.rank, this.speed, this.map, this.msg, this.small]
     this.gauges = [this.time, this.board, this.lap, this.power, this.rank, this.speed, this.map]
     this.msgT = 0; this.msgDur = 0; this.smallT = 0; this.smallDur = 0
@@ -174,6 +202,18 @@ export class Hud {
     for (const p of this.panels) p.show(on)
     if (!on) { this.lights?.show(false); for (const t of this.tags) t.show(false); for (const b of this.bars) b.visible = false }
     if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur); this.cine = false; this.cineK = 0; this.msg.place('c', 0, -60); this.small.place('t', 0, 96) }
+  }
+
+  /** The pause: the picture dimmed and the plate (sel: the chosen row of labels), or off. */
+  pause(on, sel = 0, labels = []) {
+    this.dim.visible = on
+    if (on) {
+      const o = this.overlay
+      this.dim.scale.set(o.width + 4, o.height + 4, 1); this.dim.position.set(o.width / 2, o.height / 2, 0)
+      this.pauseP.update(`${sel}|${labels.join()}`, sel, labels)
+      this.lights?.show(false)
+    }
+    this.pauseP.show(on)
   }
 
   /** The finish's shots: the gauges go, the black bars close in (and open again when off). */

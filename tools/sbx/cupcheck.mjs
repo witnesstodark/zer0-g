@@ -27,7 +27,7 @@ for (let k = 0; k < 3; k++) {
   await page.screenshot({ path: `${out}${k + 1}-race.png` })
   // to the line: the last lap's end, a little ahead of everyone
   await page.evaluate(() => { const d = window.__dbg, m = d.me, L = d.race.track.length; m.D = d.race.laps * L - 1.5; m.lap = d.race.laps; m.sp = m.vmax })
-  await wait(6500)
+  await wait(8000)                 // the finish's shots, then the results (6 s after the line)
   await page.screenshot({ path: `${out}${k + 1}-results.png` })
   console.log('race', k + 1, await page.evaluate(() => window.__dbg.race.track.name + ' ' + window.__dbg.race.track.env))
   // the cup standings: the points landing, then the rows settled

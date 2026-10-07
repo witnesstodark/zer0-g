@@ -26,7 +26,7 @@ import { ScreenFx } from './screenfx.js'
 import { boardTexture } from './boards.js'
 import { Online, TPS, SHOW, onRemoteWreck } from './online.js'
 import { Font, Overlay, fmtTime, ordinal } from './ui.js'
-import { Hud } from './hud.js'
+import { Hud, PAUSE_W, PAUSE_H, PAUSE_ROW0, PAUSE_ROW } from './hud.js'
 import { Menus, LAPS, CUPS } from './menus.js'
 import { Audio } from './audio.js'
 import { warmUp, warmSteps } from './warmup.js'
@@ -34,7 +34,7 @@ import { warmUp, warmSteps } from './warmup.js'
 const LAUNCH = 3.0                  // the pack leaves the grid as the title music builds...
 const SLAM = 6.06                   // ...and the riff slams in (and the logo lands) as it screams past
 const HOVER = 0.033 * U
-const CONTROLS = 'ZER0-G · Up/W: accelerate · Left/Right or A/D: steer · Down/S: brake · SHIFT: nitro (hold it for more) · C: camera\nSPACE + steer: DRIFT (fills the nitro, let go for a turbo) · Q/E: slide, double tap: side attack · F: spin attack'
+const CONTROLS = 'ZER0-G · Up/W: accelerate · Left/Right or A/D: steer · Down/S: brake · SHIFT: nitro (hold it for more) · C: camera\nSPACE + steer: DRIFT (fills the nitro, let go for a turbo) · Q/E: slide, double tap: side attack · F: spin attack · BACKSPACE: pause'
 // the race music: the hardest first, then round the rest, a new one each race
 const RACE_MUSIC = ['race3', 'race', 'race4', 'race2']
 // points in the cup by place (the rest score nothing)
@@ -246,6 +246,7 @@ export default async function start(p0) {
   let config = null
   let resultsShown = false
   let finishCine = false              // the finish's shots are on (the director has the camera)
+  let paused = false, pauseSel = 0    // the pause (Backspace, not online) and its chosen row
   let prizeAsked = false              // p0.win() asked this session (the city's prize: once)
   const game = p0.game
   const prizeOn = !!game && game.mode === 'win' && game.prize > 0
@@ -346,6 +347,7 @@ export default async function start(p0) {
     fleet.setRacers(racers.map(r => ({ model: r.model, accent: r.accent, hue: r.hue, sat: r.sat })))
     director = new Director(cams, race)
     finishCine = false
+    if (paused) { paused = false; hud.pause(false) }
     if (menus && !attract) menus.prize = null
     fallen.clear()
     wrecks.clear()
@@ -695,8 +697,8 @@ export default async function start(p0) {
       const fr = cams.racerFrame(me)
       fx.sparks(fr.p.clone().addScaledVector(fr.f, -0.2 * U), fr.f.clone().multiplyScalar(-1), Math.random() < 0.5 ? 0xffffff : 0xff6fe0, 3, 3.5 * U, 0.35)
     }
-    audio.loop('wind', racing && k > 0.55, Math.min(1, (k - 0.45) * 0.9 + (boost ? 0.3 : 0)))
-    audio.loop('drift', racing && me.drift !== 0, 0.45)
+    audio.loop('wind', !paused && racing && k > 0.55, Math.min(1, (k - 0.45) * 0.9 + (boost ? 0.3 : 0)))
+    audio.loop('drift', !paused && racing && me.drift !== 0, 0.45)
     if (!racing) return
     // specks of dust and air in front of the camera: standing still in the world, so the camera's speed
     // streams them past
@@ -730,9 +732,50 @@ export default async function start(p0) {
   function releaseMouse() { if (keys.pointer.locked) keys.unlockPointer() }
   const taps = { KeyQ: -9, KeyE: -9 }
   let quitArmed = 0
+  // ---- the pause (round 26, Stefan: "Backspace pauses, to go on, restart or leave, unless it is online"): the
+  // game stands still (no steps, no clocks), the picture dimmed under a plate of three choices. An online race
+  // cannot stop for one player: there Backspace twice still leaves it
+  const PAUSE_LABELS = () => ['BACK TO THE RACE', config?.cup ? 'RESTART THIS RACE' : 'RESTART', 'QUIT TO THE MENU']
+  const canPause = () => !online.race && !!me && !me.finished && !me.retired && (state === 'race' || state === 'countdown' || state === 'prerace')
+  function setPause(on) {
+    if (on && !canPause()) return
+    if (paused === on) return
+    paused = on
+    pauseSel = 0
+    hud.pause(on, pauseSel, PAUSE_LABELS())
+    if (on) { releaseMouse(); audio.engine(false); quietLoops(); p0.music.volume(0.22); audio.sfx('back', { volume: 0.7 }) }
+    else { p0.music.volume(0.75); if (state === 'countdown' || state === 'prerace') hud.lightsOn = true }
+  }
+  function pauseChoose(k) {
+    audio.sfx('select', { volume: 0.7 })
+    if (k === 0) setPause(false)
+    else if (k === 1) { setPause(false); startLocal({ ...config }) }
+    else { setPause(false); toMenu() }
+  }
+  function pauseKey(code) {
+    const n = PAUSE_LABELS().length
+    if (code === 'ArrowUp' || code === 'KeyW') pauseSel = (pauseSel + n - 1) % n
+    else if (code === 'ArrowDown' || code === 'KeyS') pauseSel = (pauseSel + 1) % n
+    else if (code === 'Space' || code === 'Enter' || code === 'NumpadEnter') { pauseChoose(pauseSel); return }
+    else if (code === 'Backspace' || code === 'KeyP') { setPause(false); return }
+    else return
+    audio.sfx('move', { volume: 0.6 })
+    hud.pause(true, pauseSel, PAUSE_LABELS())
+  }
+  /** The plate's row under a click (or -1): the plate stands in the middle of the 1280 x 720 frame. */
+  function pauseRowAt(x, y) {
+    const p = menus.toFrame(x, y), left = 640 - PAUSE_W / 2, top = 360 - PAUSE_H / 2
+    for (let k = 0; k < PAUSE_LABELS().length; k++) {
+      const cy = top + PAUSE_ROW0 + k * PAUSE_ROW
+      if (p.x > left + 60 && p.x < left + PAUSE_W - 60 && Math.abs(p.y - cy) < 23) return k
+    }
+    return -1
+  }
   p0.on('keydown', e => {
     audio.unlock()
     if (e.repeat) return
+    if (paused) { pauseKey(e.code); return }
+    if ((e.code === 'Backspace' || e.code === 'KeyP') && canPause()) { setPause(true); return }
     if (state === 'waiting') { startIntro(); return }
     if (state === 'intro') { toTitle(); return }
     if (menus?.screen && (state === 'title' || state === 'menu' || state === 'results')) {
@@ -747,9 +790,9 @@ export default async function start(p0) {
         taps[e.code] = p0.time
       }
       if (e.code === 'KeyC') cams.far = !cams.far
-      if (e.code === 'Backspace') {
-        if (p0.time - quitArmed < 2) { if (online.race) online.done(); toMenu() }
-        else { quitArmed = p0.time; hud.note('BACKSPACE AGAIN TO QUIT THE RACE', 2, 'red') }
+      if (e.code === 'Backspace' && online.race) {
+        if (p0.time - quitArmed < 2) { online.done(); toMenu() }
+        else { quitArmed = p0.time; hud.note('ONLINE: BACKSPACE AGAIN TO LEAVE THE RACE', 2, 'red') }
       }
     }
     if (state === 'countdown' && me && (e.code === 'KeyW' || e.code === 'ArrowUp')) launchPress = race.time
@@ -757,6 +800,7 @@ export default async function start(p0) {
   })
   p0.on('pointerdown', e => {
     audio.unlock()
+    if (paused) { const k = pauseRowAt(e.x, e.y); if (k >= 0) pauseChoose(k); return }
     if (state === 'race') return
     if (state === 'waiting') startIntro()
     else if (state === 'intro') toTitle()
@@ -767,6 +811,7 @@ export default async function start(p0) {
     }
   })
   p0.on('pointermove', e => {
+    if (paused) { const k = pauseRowAt(e.x, e.y); if (k >= 0 && k !== pauseSel) { pauseSel = k; hud.pause(true, pauseSel, PAUSE_LABELS()) } return }
     if (menus?.screen && (state === 'title' || state === 'menu' || state === 'results')) menus.pointerMove(e.x, e.y, e.buttons)
   })
   function readControls(dt) {
@@ -845,6 +890,7 @@ export default async function start(p0) {
   /** The cup starts on its first course (the field kept for all three); Time Attack at once. (An online race starts
    * from its lobby: see the online hooks below.) */
   function startRace(cfg) {
+    menus.weekly = null                   // a new cup's place in the week's table comes with its time
     if (cfg.mode === 'gp') {
       // the cup the chosen course belongs to, from its first course
       const def = CUPS.find(c => c.courses.includes(cfg.course) && c.courses.every(k => k < courses.length)) ?? CUPS[0]
@@ -920,18 +966,12 @@ export default async function start(p0) {
     audio.voice('ready')
     audio.sfx('crowd', { volume: 0.5 })
     // the city's prize, said before a race that can win it
-    if (prizeOn && !prizeAsked && (cfg.mode === 'gp' || cfg.mode === 'online') && cfg.cls >= 1) hud.note(`${game.winners ? `THE FIRST ${game.winners} TO FINISH` : 'FINISH'} WITHOUT A WRECK: ${prizeNet} TOKENS FROM THE CITY`, 4.5, 'gold')
     director.play([{ kind: 'grid', dur: cfg.online ? SHOW - 3 : 3.8, racer: race.racers.indexOf(me) }], false)
     p0.hud(CONTROLS)
-    hud.note('SPACE + STEER: DRIFT  ·  SHIFT: NITRO, HOLD FOR MORE', 3.5, 'pink')
+    // one line at a time: the city's prize before a race that can win it (the controls are in the p0 HUD too)
+    if (prizeOn && !prizeAsked && (cfg.mode === 'gp' || cfg.mode === 'online') && cfg.cls >= 1) hud.note(`${game.winners ? `THE FIRST ${game.winners} TO FINISH` : 'FINISH'} WITHOUT A WRECK: ${prizeNet} TOKENS FROM THE CITY`, 4.5, 'gold')
+    else hud.note('SPACE + STEER: DRIFT  ·  SHIFT: NITRO, HOLD FOR MORE', 3.5, 'pink')
   }
-  /**
-   * Across the line (Stefan: "like F-Zero: FINISH, the camera photographs me crossing, a few shots from different
-   * sides, and only then it follows me"): the gauges go and black bars close in; three shots held to your machine
-   * (each a photo's flash and the shutter's click: low by the nose with a long lens, a pass along the other side
-   * nose to tail, high ahead looking back down the road), then the camera swings round behind it into the chase
-   * camera for the lap of honour, until the results.
-   */
   /**
    * The city's prize (round 25, Stefan: 50 tokens a win, once a player, 500 from the city's treasury): a win is
    * a whole race (both laps) in a Grand Prix or an online race on STANDARD or EXPERT, finished without losing a
@@ -947,6 +987,13 @@ export default async function start(p0) {
     prizeAsked = true
     p0.win()
   }
+  /**
+   * Across the line (Stefan: "like F-Zero: FINISH, the camera photographs me crossing, a few shots from different
+   * sides, and only then it follows me"): the gauges go and black bars close in; three shots held to your machine
+   * (each a photo's flash and the shutter's click: low by the nose with a long lens, a pass along the other side
+   * nose to tail, high ahead looking back down the road), then the camera swings round behind it into the chase
+   * camera for the lap of honour, until the results.
+   */
   function finishShots() {
     if (!me || state !== 'race') return
     const i = race.racers.indexOf(me), sd = me.x > 0 ? -1 : 1     // the first shot from the road's middle
@@ -1034,7 +1081,7 @@ export default async function start(p0) {
   online.onOpen = () => { if (state === 'menu' && (menus.screen === 'machine' || menus.screen === 'online')) menus.open('lobby') }
   online.onGone = () => { if (state === 'menu' && (menus.screen === 'lobby' || menus.screen === 'machine')) { menus.flash = 'THE LOBBY CLOSED'; menus.open('online') } }
   p0.on('reward', r => {
-    if (r.kind === 'score' && r.ok) { menus.weekly = { best: r.best, place: r.place }; menus.redraw() }
+    if (r.kind === 'score') { menus.weekly = r.ok ? { best: r.best, place: r.place } : { reason: r.reason || 'Not kept' }; menus.redraw() }
     // the city's prize: the tokens, or why not (already won, all taken, the pool empty...); a game with no prize
     // answers with no reason, and then nothing is said
     if (r.kind === 'win' && (r.ok || r.reason)) {
@@ -1114,6 +1161,7 @@ export default async function start(p0) {
   // ---- the frame
   p0.loop(dt => {
     dt = Math.min(dt, 0.1)
+    if (paused) dt = 0                                   // the game stands still under the pause's plate
     stateT += dt
     shared.uTime.value += dt
     shared.uPx.value = composer.renderTarget1.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))
@@ -1169,7 +1217,7 @@ export default async function start(p0) {
         if (!endT) endT = p0.time
         if (p0.time - endT > (me.finished ? 6 : 3)) { endT = 0; showResults() }
       }
-      audio.engine(me.alive && !me.finished, me.sp / me.vmax)
+      if (!paused) audio.engine(me.alive && !me.finished, me.sp / me.vmax)
     }
 
     // ---- camera

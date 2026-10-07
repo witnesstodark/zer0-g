@@ -81,7 +81,12 @@ const p0 = {
     console.log('[p0] win')
     const pz = params.get('prize')
     if (pz) setTimeout(() => emit('reward', pz === 'taken' ? { kind: 'win', ok: false, tokens: 0, reason: 'You already won the prize here' } : { kind: 'win', ok: true, tokens: 45, reason: null }), 150)
-  }, score(n) { console.log('[p0] score', n) }, items: { give() {} },
+  }, score(n) {
+    // the answer as Project 0 gives it: this player's best this week and its place (a stand-in: second)
+    console.log('[p0] score', n)
+    const best = Math.min(n, Number(localStorage.getItem('p0-best') ?? Infinity)); localStorage.setItem('p0-best', String(best))
+    setTimeout(() => emit('reward', { kind: 'score', ok: true, best, place: 2, reason: null }), 300)
+  }, items: { give() {} },
 }
 // ?pid=N: a shared session between tabs of one browser (a BroadcastChannel stands in for the server): the
 // state, messages, inputs and 20-a-second ticks (from the lowest id, the host), joins and leaves

@@ -1147,9 +1147,11 @@ export class Menus {
     const title = !cup.last ? `${cup.name ?? 'ZER0-G CUP'}  ${cup.k + 1} / 3` : me?.now === 1 ? 'CUP WINNER!' : `${place(me?.now ?? 0)} IN THE CUP`
     f.draw(c, title, 640, 52, cup.last ? 38 : 28, { color: cup.last ? GOLD : CYAN, align: 'center', skew: 0.14, outline: false, glow: cup.last ? C_GOLD : C_CYAN, glowBlur: 12 })
     if (me) tf.draw(c, `YOU  +${me.add} THIS RACE  /  ${me.after} IN ALL`, 640, 90, 12, { color: '#ffffff', align: 'center', skew: 0, spacing: 0.2, outline: false })
-    // the twelve shown: the top eleven after this race and you (or the twelfth)
-    const shown = byAfter.slice(0, 12)
-    if (me && me.now > 12) shown[11] = me
+    // the twelve shown: the top eleven after this race and you (or the twelfth); ten after the last race, under
+    // them the cup's card
+    const N = cup.last ? 10 : 12
+    const shown = byAfter.slice(0, N)
+    if (me && me.now > N) shown[N - 1] = me
     const before = [...shown].sort((a, b) => b.before - a.before || b.after - a.after)
     const after = [...shown].sort((a, b) => b.after - a.after || b.add - a.add)
     const H = 40, Y0 = 124, X0 = 250, W = 780
@@ -1181,13 +1183,28 @@ export class Menus {
       }
     }
     tf.draw(c, 'PTS', X0 + W - 20, Y0 - 12, 9, { color: MUTED, align: 'right', skew: 0, spacing: 0.3, outline: false })
-    // the end of the cup: your total and the week's table
+    // the end of the cup (round 26, Stefan: "show what place you took in the table, how many points"): a card of
+    // four: your place in the cup, your points, the cup's time, your place in the week's table (it comes back from
+    // Project 0 a moment later; or why not)
     if (cup.last && t >= 2.2) {
-      const y = Y0 + 12 * H + 14
-      const line = cup.total ? `CUP TIME  ${fmtTime(cup.total)}${cup.weekly === false ? '  /  THE WEEKLY TABLE COUNTS THE ZER0-G CUP' : ''}` : 'FINISH ALL THREE RACES FOR A CUP TIME'
-      tf.draw(c, line, 640, y, 13, { color: C_CYAN, align: 'center', skew: 0, spacing: 0.18, outline: false })
-      const week = this.weekly?.place ? `WEEKLY TABLE  #${this.weekly.place}  /  YOUR BEST ${fmtTime(this.weekly.best / 1000)}` : cup.total && cup.weekly !== false ? 'YOUR CUP TIME GOES TO THE WEEKLY TABLE...' : ''
-      if (week) tf.draw(c, week, 640, y + 24, 11, { color: C_GOLD, align: 'center', skew: 0, spacing: 0.16, outline: false })
+      const y = Y0 + N * H + 10, k = ease((t - 2.2) / 0.4)
+      c.save(); c.globalAlpha = k
+      glass(c, X0, y, W, 104, { on: true, accent: C_GOLD, k: 12 })
+      const w = this.weekly
+      const cols = [
+        ['THE CUP', me ? place(me.now) : '--', me?.now === 1 ? 'CUP WINNER' : '', me && me.now <= 3],
+        ['POINTS', me ? `${me.after}` : '--', me ? `+${me.add} THIS RACE` : '', false],
+        ['CUP TIME', cup.total ? fmtTime(cup.total) : '--', cup.total ? 'ALL THREE RACES' : 'FINISH ALL THREE RACES', false],
+        ['WEEKLY TABLE', cup.weekly === false ? '--' : w?.place ? `#${w.place}` : cup.total ? '...' : '--',
+          cup.weekly === false ? 'THE ZER0-G CUP ONLY' : w?.place ? `YOUR BEST ${fmtTime(w.best / 1000)}` : w?.reason ? String(w.reason).toUpperCase().slice(0, 30) : cup.total ? 'SENDING YOUR TIME' : 'NEEDS A CUP TIME', !!w?.place && w.place <= 3],
+      ]
+      cols.forEach(([label, value, sub, gold], i) => {
+        const x = X0 + W / 8 + i * W / 4
+        tf.draw(c, label, x, y + 24, 9.5, { color: MUTED, align: 'center', skew: 0, spacing: 0.3, outline: false })
+        f.draw(c, value, x, y + 58, 28, { color: gold || i === 3 ? GOLD : '#ffffff', align: 'center', skew: 0.12, outline: false, glow: gold ? C_GOLD : null, glowBlur: 10 })
+        if (sub) tf.draw(c, sub, x, y + 86, 9, { color: i === 3 ? C_GOLD : FAINT, align: 'center', skew: 0, spacing: 0.14, outline: false })
+      })
+      c.restore()
     } else if (!cup.last && t >= 2.2) {
       tf.draw(c, `NEXT  ${cup.next}`, 640, Y0 + 12 * H + 14, 13, { color: '#ffffff', align: 'center', skew: 0, spacing: 0.24, outline: false })
     }
