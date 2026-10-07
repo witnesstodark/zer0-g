@@ -102,6 +102,24 @@ export class Cameras {
 
   cut() { this.first = true; this.dir = null }
 
+  /**
+   * A camera held to a racer, placed in the road's frame at the machine (forward, right, up, in machine units):
+   * the finish's shots. off: where it stands, look: what it looks at; it rolls with the road (loops, drums).
+   */
+  rig(r, off, look, dt, fov) {
+    const fr = this.racerFrame(r, this.frameA ?? (this.frameA = { p: V(), f: V(), u: V(), r: V() }))
+    const road = this.frameB ?? (this.frameB = { p: V(), f: V(), u: V(), r: V() })
+    this.track.frame(r.D, road.p, road.f, road.u, road.r)
+    const at = (o, out) => out.copy(fr.p).addScaledVector(road.f, o[0] * U).addScaledVector(road.r, o[1] * U).addScaledVector(road.u, o[2] * U)
+    at(off, this.pos)
+    at(look, this.look)
+    if (r.falling && r.fallPos) this.look.copy(r.fallPos)
+    this.up.lerp(road.u, this.first ? 1 : 1 - Math.exp(-10 * dt)).normalize()
+    if (this.first) this.fov = fov
+    this.first = false
+    this.apply(dt, fov)
+  }
+
   apply(dt, fov) {
     const cam = this.camera
     this.fov += (fov - this.fov) * Math.min(1, dt * 4)
@@ -125,7 +143,7 @@ export class Cameras {
 /**
  * The director: a list of shots, each { dur, kind, ... }, played in turn. kind: 'side' (a fixed point beside
  * the road at s, watching the nearest racer pass), 'ride' (behind a racer), 'crane' (from a corner, high,
- * drifting), 'orbit' (round the arena), 'grid' (down the grid to a racer).
+ * drifting), 'orbit' (round the arena), 'grid' (down the grid to a racer), 'rig' (held to a racer: the finish).
  */
 export class Director {
   constructor(cams, race) {
@@ -136,7 +154,7 @@ export class Director {
     this.t = 0
   }
 
-  play(shots, loop = true) { this.shots = shots; this.loop = loop; this.k = -1; this.next() }
+  play(shots, loop = true) { this.shots = shots; this.loop = loop; this.k = -1; this.done = false; this.next() }
 
   next() {
     this.k++
@@ -145,6 +163,7 @@ export class Director {
     this.shot = this.shots[this.k]
     this.sideX = null
     this.cams.cut()
+    this.onCut?.(this.shot)
   }
 
   /**
@@ -203,6 +222,19 @@ export class Director {
       const a = s.a + tt * (s.spin ?? 0.12)
       const from = V(Math.cos(a) * L.width * 0.46, s.h, Math.sin(a) * L.depth * 0.46)
       cams.watch(from, V(0, s.lookY ?? 10, 0), dt, s.fov ?? 60, 30)
+    } else if (s.kind === 'rig') {
+      // held to a racer, gliding from one spot round it to another (the finish's shots: [forward, right, up])
+      // (or round it: arc { a: [from, to] radians, 0 ahead, PI/2 right, PI behind; d: [from, to]; h: [from, to] },
+      // the look turning to lookTo only near the end)
+      const r = race.racers[s.racer] ?? leader
+      const k = THREE.MathUtils.smoothstep(Math.min(1, tt / s.dur), 0, 1)
+      const mix = (a, b, q = k) => a.map((v, j) => v + ((b ?? a)[j] - v) * q)
+      let off = s.from && mix(s.from, s.to)
+      if (s.arc) {
+        const a = s.arc.a[0] + (s.arc.a[1] - s.arc.a[0]) * k, d = s.arc.d[0] + (s.arc.d[1] - s.arc.d[0]) * k
+        off = [Math.cos(a) * d, Math.sin(a) * d, s.arc.h[0] + (s.arc.h[1] - s.arc.h[0]) * k]
+      }
+      cams.rig(r, off, mix(s.look ?? [0, 0, 0.04], s.lookTo, s.arc ? k * k * k : k), dt, s.fov ?? 50)
     } else if (s.kind === 'grid') {
       // from high over the start line, down the grid, to behind the given racer
       const r = race.racers[s.racer]

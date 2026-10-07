@@ -1,14 +1,23 @@
 // The race HUD, laid out like the 64-bit arcade racers: time and lap times top left with the standings under
 // them (the first seven as pilot portraits, and you), the POWER meter top right with the NITRO gauge under it
 // (four cells) and the map under that, your place bottom left, speed and lap bottom right, and the big words
-// in the middle.
+// in the middle. Over the first three in the field (yours aside) a tag with their place hangs in the picture, so
+// a leader up the road shows; across the finish the gauges go and black bars close in for the finish's shots.
 
+import * as THREE from 'three'
 import { fmtTime, ordinal, slantBar, roundRect } from './ui.js'
 import { KMH, NITRO_CELL, LIVES, EMPTY, driftTier } from './race.js'
+import { U } from './scale.js'
 
 const CYAN = ['#ffffff', '#9ff3ff', '#29d3ff']
 const GOLD = ['#fffbe0', '#ffd66b', '#ff9a1f']
 const RED = ['#ffe0e0', '#ff6b6b', '#ff1f3d']
+const SILVER = ['#ffffff', '#dceaf5', '#93acc2']
+const BRONZE = ['#ffe6d2', '#ffa66b', '#c8622e']
+const MEDAL = [GOLD, SILVER, BRONZE]
+const MEDAL_EDGE = ['#ffc23a', '#c8dceb', '#f08a4a']
+const MEDAL_GLOW = ['rgba(255,170,30,0.75)', 'rgba(200,225,245,0.6)', 'rgba(255,120,50,0.65)']
+const TAG_W = 88, TAG_H = 96
 const PINK = ['#ffe8fb', '#ff8ae6', '#ff2bd6']
 const hex = c => `#${(c >>> 0).toString(16).padStart(6, '0').slice(-6)}`
 const TOP = 7                       // the standings show the first seven (and you, if further back)
@@ -126,7 +135,35 @@ export class Hud {
       lamp(410, 75, 40, go, true)
       c.restore()
     }).place('t', 0, 70, 0.8)
+    // the place tags: the place in its medal's colours on a dark plate, an arrow down to the machine
+    this.tags = [0, 1, 2].map(k => overlay.panel(TAG_W, TAG_H, c => {
+      c.save()
+      roundRect(c, 6, 4, TAG_W - 12, 60, 12)
+      c.fillStyle = 'rgba(8,10,26,0.82)'; c.fill()
+      c.shadowColor = MEDAL_GLOW[k]; c.shadowBlur = 12
+      c.strokeStyle = MEDAL_EDGE[k]; c.lineWidth = 3; c.stroke()
+      c.beginPath(); c.moveTo(TAG_W / 2 - 16, 70); c.lineTo(TAG_W / 2 + 16, 70); c.lineTo(TAG_W / 2, 92); c.closePath()
+      c.fillStyle = MEDAL_EDGE[k]; c.fill()
+      c.restore()
+      const num = String(k + 1), suf = ordinal(k + 1).slice(num.length)
+      const w = f.measure(num, 48, 0.04), ws = f.measure(suf, 18, 0.04)
+      const x0 = TAG_W / 2 - (w + 3 + ws) / 2
+      f.draw(c, num, x0, 36, 48, { color: MEDAL[k], glow: MEDAL_GLOW[k] })
+      f.draw(c, suf, x0 + w + 3, 24, 18, { color: '#ffffff', skew: 0.12 })
+    }))
+    for (const t of this.tags) { t.update('tag'); t.show(false) }
+    this.tagP = new THREE.Vector3()
+    // the finish's black bars, top and bottom
+    this.bars = [0, 1].map(() => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, toneMapped: false }))
+      m.visible = false
+      overlay.scene.add(m)
+      return m
+    })
+    this.overlay = overlay
+    this.cine = false; this.cineK = 0
     this.panels = [this.time, this.board, this.lap, this.power, this.rank, this.speed, this.map, this.msg, this.small]
+    this.gauges = [this.time, this.board, this.lap, this.power, this.rank, this.speed, this.map]
     this.msgT = 0; this.msgDur = 0; this.smallT = 0; this.smallDur = 0
     this.frame = 0
     this.show(false)
@@ -135,8 +172,59 @@ export class Hud {
   show(on) {
     this.shown = on
     for (const p of this.panels) p.show(on)
-    if (!on) this.lights?.show(false)
-    if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur) }
+    if (!on) { this.lights?.show(false); for (const t of this.tags) t.show(false); for (const b of this.bars) b.visible = false }
+    if (on) { this.msg.show(this.msgT < this.msgDur); this.small.show(this.smallT < this.smallDur); this.cine = false; this.cineK = 0; this.msg.place('c', 0, -60) }
+  }
+
+  /** The finish's shots: the gauges go, the black bars close in (and open again when off). */
+  cinema(on) {
+    this.cine = on
+    for (const p of this.gauges) p.show(this.shown && !on)
+    // the big words go up, over the picture's top third (the shots hold the machine in the middle)
+    this.msg.place('c', 0, on ? -212 : -60)
+    if (on) for (const t of this.tags) t.show(false)
+  }
+
+  /**
+   * The place tags over the first three (yours aside), where they are in the picture: camera (after it was set
+   * this frame), frameOf (a racer's frame: its point p and up u). Smaller with distance; none behind the camera.
+   */
+  placeTags(race, me, camera, frameOf) {
+    const o = this.overlay, P = this.tagP
+    let shown = 0
+    const placed = []
+    if (this.shown && !this.cine && race.started) {
+      camera.updateMatrixWorld()
+      for (let k = 0; k < 3; k++) {
+        const r = race.ranked[k], tag = this.tags[k]
+        let on = !!r && r !== me && r.alive && !(r.wreckT > 0) && !r.falling
+        if (on) {
+          const f = frameOf(r)
+          P.copy(f.p).addScaledVector(f.u, 0.12 * U)
+          const d = P.distanceTo(camera.position)
+          P.applyMatrix4(camera.matrixWorldInverse)
+          if (P.z > -0.05) on = false
+          else {
+            P.applyMatrix4(camera.projectionMatrix)
+            if (Math.abs(P.x) > 1.1 || Math.abs(P.y) > 1.2) on = false
+            else {
+              const sc = THREE.MathUtils.clamp(1.6 / Math.max(0.1, d), 0.58, 1), u = o.unit
+              const w = TAG_W * u * sc, h = TAG_H * u * sc
+              let x = (P.x + 1) / 2 * o.width, y = (P.y + 1) / 2 * o.height + h / 2
+              // two machines close together: the lower place's tag stacks over the one before it
+              for (const q of placed) if (Math.abs(q.x - x) < (q.w + w) * 0.42 && Math.abs(q.y - y) < (q.h + h) * 0.45) y = q.y + (q.h + h) * 0.45
+              placed.push({ x, y, w, h })
+              tag.mesh.position.set(x, y, 0)
+              tag.mesh.scale.set(w, h, 1)
+              tag.mat.opacity = THREE.MathUtils.clamp(1.3 - d / 60, 0.55, 1)
+            }
+          }
+        }
+        tag.show(on)
+        if (on) shown++
+      }
+    } else for (const t of this.tags) t.show(false)
+    return shown
   }
 
   /** The start lights: lit (0-3 small lamps red), go (the big one blazes), k (0-1, its flare). null hides them. */
@@ -271,6 +359,14 @@ export class Hud {
 
   update(dt, race, me) {
     this.frame++
+    // the black bars: in over a fraction of a second, out as quickly
+    this.cineK += ((this.cine ? 1 : 0) - this.cineK) * Math.min(1, dt * 7)
+    const bh = this.cineK * 0.1 * this.overlay.height
+    this.bars.forEach((b, k) => {
+      b.visible = this.shown && bh > 0.5
+      b.scale.set(this.overlay.width + 4, bh, 1)
+      b.position.set(this.overlay.width / 2, k ? this.overlay.height - bh / 2 : bh / 2, 0)
+    })
     this.msgT += dt
     this.smallT += dt
     if (this.msgT >= this.msgDur) this.msg.show(false)

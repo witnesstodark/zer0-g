@@ -25,7 +25,7 @@ import { U } from './scale.js'
 import { ScreenFx } from './screenfx.js'
 import { boardTexture } from './boards.js'
 import { Online, TPS, SHOW, onRemoteWreck } from './online.js'
-import { Font, Overlay } from './ui.js'
+import { Font, Overlay, fmtTime, ordinal } from './ui.js'
 import { Hud } from './hud.js'
 import { Menus, LAPS, CUPS } from './menus.js'
 import { Audio } from './audio.js'
@@ -245,6 +245,7 @@ export default async function start(p0) {
   let stateT = 0
   let config = null
   let resultsShown = false
+  let finishCine = false              // the finish's shots are on (the director has the camera)
   let raceMusic = -1
   let nitroVoiceAt = -99
   let healAt = 0
@@ -339,6 +340,7 @@ export default async function start(p0) {
     if (me && p0.debugAutopilot) me.ai = { pace: 1, offset: 0, line: 0.8, aggr: 0.3 }
     fleet.setRacers(racers.map(r => ({ model: r.model, accent: r.accent, hue: r.hue, sat: r.sat })))
     director = new Director(cams, race)
+    finishCine = false
     fallen.clear()
     wrecks.clear()
     resultsShown = false
@@ -516,8 +518,10 @@ export default async function start(p0) {
       if (mine) {
         audio.voice('goal')
         audio.sfx('crowd', { volume: 0.6 })
-        hud.say('GOAL!', 2.5, 'gold', r.rank === 1 ? 'WINNER' : '')
+        const solo = race.racers.length === 1
+        hud.say('FINISH!', 2.8, 'gold', `${solo ? '' : r.rank === 1 ? 'WINNER   ' : `${ordinal(r.rank)} PLACE   `}${fmtTime(r.finishTime)}`)
         for (let k = 0; k < 5; k++) fx.fireworks(new THREE.Vector3((random() - 0.5) * 20, 14 + random() * 10, (random() - 0.5) * 30), [0x29d3ff, 0xff2bd6, 0xffb21f][k % 3])
+        finishShots()
       }
     }
   }
@@ -529,6 +533,7 @@ export default async function start(p0) {
   const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), REAR = new THREE.Vector3(), ROAD = new THREE.Vector3()
   const col = new THREE.Color()
   const FR = { p: new THREE.Vector3(), f: new THREE.Vector3(), u: new THREE.Vector3(), r: new THREE.Vector3() }
+  const TAGF = { p: new THREE.Vector3(), f: new THREE.Vector3(), u: new THREE.Vector3(), r: new THREE.Vector3() }
   function drawRacers(dt) {
     if (!race) return
     air.begin()
@@ -663,7 +668,8 @@ export default async function start(p0) {
   /** Speed you can feel: dust and air rushing past the camera, the lines, the edges, the pit's refill. */
   function feelSpeed(dt) {
     const racing = (state === 'race' || state === 'countdown') && me && me.alive && !resultsShown
-    const k = racing ? me.sp / me.vmax * (1 + me.flow * 0.3) : 0
+    // (the finish's shots: the speed lines and the specks mostly go, they belong to the chase camera)
+    const k = racing ? me.sp / me.vmax * (1 + me.flow * 0.3) * (finishCine && !director.done ? 0.3 : 1) : 0
     const boost = racing && (me.boostT > 0 || me.dashT > 0 || me.turbo > 0)
     const mega = racing && me.boostT > 0 && me.boostStack >= 3
     const tint = !racing ? null : mega ? [0xffffff, 0xff6fe0, 0x7fe8ff][Math.floor(shared.uTime.value * 12) % 3] : me.boostT > 0 ? 0xff8ae6 : me.dashT > 0 ? 0x8fe9ff : me.turbo > 0 ? DRIFT_COLORS[1] : 0xd8f4ff
@@ -910,6 +916,32 @@ export default async function start(p0) {
     p0.hud(CONTROLS)
     hud.note('SPACE + STEER: DRIFT  ·  SHIFT: NITRO, HOLD FOR MORE', 3.5, 'pink')
   }
+  /**
+   * Across the line (Stefan: "like F-Zero: FINISH, the camera photographs me crossing, a few shots from different
+   * sides, and only then it follows me"): the gauges go and black bars close in; three shots held to your machine
+   * (each a photo's flash and the shutter's click: low by the nose with a long lens, a pass along the other side
+   * nose to tail, high ahead looking back down the road), then the camera swings round behind it into the chase
+   * camera for the lap of honour, until the results.
+   */
+  function finishShots() {
+    if (!me || state !== 'race') return
+    const i = race.racers.indexOf(me), sd = me.x > 0 ? -1 : 1     // the first shot from the road's middle
+    hud.cinema(true)
+    director.onCut = shot => {
+      if (!shot.snap) return
+      screen.flash(0xffffff, shot === director.shots[0] ? 1 : 0.75)
+      cams.kick = -5
+      audio.sfx('snap', { volume: 0.9, gap: 0.02 })
+    }
+    director.play([
+      { kind: 'rig', dur: 1.2, racer: i, from: [0.62, 0.3 * sd, 0.09], to: [0.5, 0.36 * sd, 0.11], look: [0, 0, 0.02], fov: 34, snap: true },
+      { kind: 'rig', dur: 1.2, racer: i, from: [0.5, -0.55 * sd, 0.16], to: [-0.4, -0.55 * sd, 0.1], look: [0, 0, 0.02], fov: 40, snap: true },
+      { kind: 'rig', dur: 1.0, racer: i, from: [0.95, 0.2 * sd, 0.4], to: [0.8, 0.1 * sd, 0.52], look: [0, 0, 0], fov: 44, snap: true },
+      { kind: 'rig', dur: 1.4, racer: i, arc: { a: [Math.PI * 0.45 * sd, Math.PI * sd], d: [0.7, 0.5], h: [0.3, 0.17] }, look: [0, 0, 0.04], lookTo: [0.95, 0, 0.08], fov: 70 },
+    ], false)
+    finishCine = true
+  }
+
   function showResults() {
     releaseMouse()
     quietLoops()
@@ -1033,7 +1065,7 @@ export default async function start(p0) {
   }
 
   // the local test page can look inside (never set in the game)
-  p0.debugHooks?.({ heroes: views => menus.setHeroes(renderHeroes(renderer, scene, courses, { bloom: !lite, views })), scene, composer, renderer, camera, cities, courses, fleet, fx, overlay, goLite: why => goLite(why), get lite() { return lite }, get race() { return race }, get me() { return me }, menus, online, cams })
+  p0.debugHooks?.({ heroes: views => menus.setHeroes(renderHeroes(renderer, scene, courses, { bloom: !lite, views })), scene, composer, renderer, camera, cities, courses, fleet, fx, overlay, goLite: why => goLite(why), get lite() { return lite }, get race() { return race }, get me() { return me }, menus, online, cams, hud, get director() { return director } })
 
   // ---- start: the title music if sound is allowed already, else wait for a key
   state = 'waiting'
@@ -1101,7 +1133,7 @@ export default async function start(p0) {
     if (state === 'race' && me) {
       if ((me.finished || me.retired) && !resultsShown) {
         if (!endT) endT = p0.time
-        if (p0.time - endT > (me.finished ? 4 : 3)) { endT = 0; showResults() }
+        if (p0.time - endT > (me.finished ? 6 : 3)) { endT = 0; showResults() }
       }
       audio.engine(me.alive && !me.finished, me.sp / me.vmax)
     }
@@ -1110,6 +1142,7 @@ export default async function start(p0) {
     // your machine blown apart: the camera backs off and up to watch it burn, until the spare comes out
     const wk = me && wrecks.get(me)
     if (state === 'race' && me && !resultsShown && wk && (me.wreckT > 0 || !me.alive)) cams.watch(wk.from, wk.p, dt, 64, 3)
+    else if (state === 'race' && me && !resultsShown && finishCine && !director.done) director.update(dt)
     else if (state === 'race' && me && !resultsShown) cams.chase(me, dt, me.boostT > 0 || me.dashT > 0)
     else if (state === 'countdown' && me) cams.chase(me, dt, false)
     else director.update(dt)
@@ -1124,7 +1157,7 @@ export default async function start(p0) {
     emblems.update(dt)
     marks.update(p0.time)
     fx.setScale(p0.height * p0.pixelRatio, camera.fov)
-    if (state === 'race' || state === 'countdown' || state === 'prerace') { if (me) hud.update(dt, race, me) }
+    if (state === 'race' || state === 'countdown' || state === 'prerace') { if (me) { hud.update(dt, race, me); hud.placeTags(race, me, camera, r => cams.racerFrame(r, TAGF)) } }
     menus.update(dt)
 
     const t0 = performance.now()
