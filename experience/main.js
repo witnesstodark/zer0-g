@@ -988,6 +988,19 @@ export default async function start(p0) {
     p0.win()
   }
   /**
+   * The cup event's achievements (Stefan, 2026-10-10; items 71-74 of lot 383): a cup finished whole (all three
+   * races, none retired) on STANDARD or EXPERT gives that cup's; first in the cup's final table gives the
+   * champion's too. The server gives each player one of each, once; its answer comes back as a 'reward'.
+   */
+  const ACHIEVEMENTS = { cups: [71, 72, 73], champion: 74 }
+  function cupAchievements(cup) {
+    if (!cup.all || (config.cls ?? 0) < 1) return
+    const item = ACHIEVEMENTS.cups[cup.index]
+    if (item) p0.items.give(item)
+    const top = cupTable()[0]
+    if (top && top[0] === me.name) p0.items.give(ACHIEVEMENTS.champion)
+  }
+  /**
    * Across the line (Stefan: "like F-Zero: FINISH, the camera photographs me crossing, a few shots from different
    * sides, and only then it follows me"): the gauges go and black bars close in; three shots held to your machine
    * (each a photo's flash and the shutter's click: low by the nose with a long lens, a pass along the other side
@@ -1033,6 +1046,7 @@ export default async function start(p0) {
       if (cup.k === 2) {
         // the week's table is the ZER0-G Cup's (one table: the other cups' times would not compare)
         if (cup.all && cup.index === 0) p0.score(Math.round(cup.total * 1000))
+        cupAchievements(cup)
       }
     }
     hud.show(false)
@@ -1084,6 +1098,13 @@ export default async function start(p0) {
     if (r.kind === 'score') { menus.weekly = r.ok ? { best: r.best, place: r.place } : { reason: r.reason || 'Not kept' }; menus.redraw() }
     // the city's prize: the tokens, or why not (already won, all taken, the pool empty...); a game with no prize
     // answers with no reason, and then nothing is said
+    // an achievement the cup gave (a new one: one of each a player)
+    if (r.kind === 'item' && r.ok && r.item) {
+      menus.prize = { ok: true, text: `ACHIEVEMENT: ${String(r.item.name).toUpperCase()}` }
+      audio.sfx('nitro', { volume: 0.8 })
+      screen.flash(0xffd66b, 0.5)
+      menus.redraw()
+    }
     if (r.kind === 'win' && (r.ok || r.reason)) {
       const got = r.ok && r.tokens > 0
       menus.prize = got ? { ok: true, text: `+${r.tokens} TOKENS FROM THE CITY!` } : { ok: false, text: String(r.reason).toUpperCase() }
