@@ -38,7 +38,7 @@ An anti-gravity racing game I made for lot #383 in [Project 0](https://project0.
 | C | near or far camera |
 | Backspace twice | leave the race |
 
-Menus: arrows or WASD to move, Space to choose, Backspace to go back, Q / E for the engine setting. The mouse works in the menus too: point at a card, a machine, a course or a button and click it.
+Menus: arrows or WASD to move, Space to choose, Backspace to go back, Q / E for the engine setting. In the online lobby, I invites a friend (the lobby travels with the invitation, and whoever comes in by it lands in it) and O offers a duel for tokens: whoever finishes ahead in the next online race wins, and both games report the same winner from the shared finish times. The mouse works in the menus too: point at a card, a machine, a course or a button and click it.
 
 ## How it runs
 

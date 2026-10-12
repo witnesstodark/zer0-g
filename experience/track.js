@@ -659,8 +659,9 @@ void main() {
   // inside a pipe: rings of light running round it
   if (H > 50.0) col += uRing * band(fract(s * 0.5 - uTime * 0.8), 0.0, 0.04, 0.01) * 0.8;
   // centre chevrons every 1.33 m, a light pulse running forward through them
-  float cs = fract(s * 0.75);
-  float chev = band(cs - abs(x) * 0.54, 0.0, 0.06, aa * 0.75) * step(abs(x), 0.19) * fade;
+  // (the arms trail behind the tip, so each one points the way the race goes, +s)
+  float cs = fract(s * 0.75 + abs(x) * 0.54);
+  float chev = band(cs, 0.0, 0.06, aa * 0.75) * step(abs(x), 0.19) * fade;
   float pulse = 0.35 + 0.65 * pow(0.5 + 0.5 * sin((s - uTime * 10.0) * 0.24), 6.0);
   col += uChev * chev * pulse * 0.7;
 
@@ -673,7 +674,7 @@ void main() {
     // a dash plate: 0.4 m wide, arrows racing forward, orange-gold
     float px = abs(x - fx);
     float inside = 1.0 - smoothstep(0.19, 0.2 + aa, px);
-    float arrow = band(fract(s * 3.9 - uTime * 3.0 - px * 2.7), 0.0, 0.35, 0.05);
+    float arrow = band(fract(s * 3.9 - uTime * 3.0 + px * 2.7), 0.0, 0.35, 0.05);
     col = mix(col, vec3(0.25, 0.08, 0.0), inside * 0.8);
     col += vec3(2.4, 1.2, 0.15) * arrow * inside;
     col += vec3(1.6, 0.9, 0.1) * band(px, 0.18, 0.2, aa) * 1.5;
@@ -692,14 +693,14 @@ void main() {
     col += vec3(2.0, 0.3, 1.6) * band(abs(px), hw - 0.03, hw, aa);
   } else if (kind == 3.0) {
     // a jump plate: the whole width, red-orange, arrows pointing up the slope
-    float arrow = band(fract(s * 6.0 - uTime * 2.0 - abs(x) * 1.8), 0.0, 0.4, 0.06);
+    float arrow = band(fract(s * 6.0 - uTime * 2.0 + abs(x) * 1.8), 0.0, 0.4, 0.06);
     col = mix(col, vec3(0.3, 0.03, 0.0), 0.85);
     col += vec3(2.6, 0.5, 0.1) * arrow;
   } else if (kind == 5.0) {
     // a kicker: a lime ramp at the side, 0.7 m wide, chevrons climbing it
     float px = abs(x - fx);
     float inside = 1.0 - smoothstep(0.34, 0.35 + aa, px);
-    float arrow = band(fract(s * 5.0 - uTime * 2.5 - px * 1.5), 0.0, 0.4, 0.06);
+    float arrow = band(fract(s * 5.0 - uTime * 2.5 + px * 1.5), 0.0, 0.4, 0.06);
     col = mix(col, vec3(0.04, 0.2, 0.02), inside * 0.85);
     col += vec3(0.7, 2.2, 0.4) * arrow * inside + vec3(0.6, 2.0, 0.3) * band(px, 0.32, 0.35, aa) * 1.4;
   } else if (kind == 4.0) {
@@ -712,7 +713,7 @@ void main() {
   if (vGuide.y > 0.01) {
     float gx = abs(x - vGuide.x);
     float lane = 1.0 - smoothstep(0.3, 0.34, gx);
-    float chev = band(fract(s * 2.2 - uTime * 4.0 - gx * 1.6), 0.0, 0.35, 0.05);
+    float chev = band(fract(s * 2.2 - uTime * 4.0 + gx * 1.6), 0.0, 0.35, 0.05);
     col = mix(col, vec3(0.01, 0.12, 0.05), lane * 0.65 * vGuide.y);
     col += vec3(0.3, 2.0, 0.7) * (chev * lane * 1.2 + band(gx, 0.3, 0.34, aa) * 1.1) * vGuide.y;
   }

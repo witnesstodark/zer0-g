@@ -861,6 +861,8 @@ export default async function start(p0) {
     audio.music('title', { volume: 0.8 })
     playAttract()
     p0.hud(`${CONTROLS}${audio.ready ? '' : '\nClick or press any key for sound'}`)
+    // came in by an invitation to a lobby: straight into it
+    if (invitedLobby) { const id = invitedLobby; invitedLobby = null; toMenu(); menus.joinLobby(id); duelSaid() }
   }
   function playAttract() {
     director.play([
@@ -988,19 +990,6 @@ export default async function start(p0) {
     p0.win()
   }
   /**
-   * The cup event's achievements (Stefan, 2026-10-10; items 71-74 of lot 383): a cup finished whole (all three
-   * races, none retired) on STANDARD or EXPERT gives that cup's; first in the cup's final table gives the
-   * champion's too. The server gives each player one of each, once; its answer comes back as a 'reward'.
-   */
-  const ACHIEVEMENTS = { cups: [71, 72, 73], champion: 74 }
-  function cupAchievements(cup) {
-    if (!cup.all || (config.cls ?? 0) < 1) return
-    const item = ACHIEVEMENTS.cups[cup.index]
-    if (item) p0.items.give(item)
-    const top = cupTable()[0]
-    if (top && top[0] === me.name) p0.items.give(ACHIEVEMENTS.champion)
-  }
-  /**
    * Across the line (Stefan: "like F-Zero: FINISH, the camera photographs me crossing, a few shots from different
    * sides, and only then it follows me"): the gauges go and black bars close in; three shots held to your machine
    * (each a photo's flash and the shutter's click: low by the nose with a long lens, a pass along the other side
@@ -1046,7 +1035,6 @@ export default async function start(p0) {
       if (cup.k === 2) {
         // the week's table is the ZER0-G Cup's (one table: the other cups' times would not compare)
         if (cup.all && cup.index === 0) p0.score(Math.round(cup.total * 1000))
-        cupAchievements(cup)
       }
     }
     hud.show(false)
@@ -1076,6 +1064,12 @@ export default async function start(p0) {
     onStart: cfg => startRace(cfg),
     onNext: () => nextCupRace(),
     onLobby: () => backToLobby(),
+    // the lobby's INVITE and DUEL: the city's invitation form, this lobby attached, so whoever takes it lands in it
+    onInvite: kind => {
+      const L = online.lobby
+      if (!L) return
+      p0.invite({ kind, stake: 10, note: `${courses[L.co ?? 0]?.name ?? 'ONLINE RACE'} / ${CLASSES[L.c ?? 1]?.name ?? ''}`, data: { lobby: L.id } })
+    },
     entityHint,
     own: ownMachine, ownEntity,
     gallery: { entries: galleryEntries, pilot: galleryPilot, like: galleryLike, get canLike() { return gallery.canLike } },
@@ -1098,13 +1092,6 @@ export default async function start(p0) {
     if (r.kind === 'score') { menus.weekly = r.ok ? { best: r.best, place: r.place } : { reason: r.reason || 'Not kept' }; menus.redraw() }
     // the city's prize: the tokens, or why not (already won, all taken, the pool empty...); a game with no prize
     // answers with no reason, and then nothing is said
-    // an achievement the cup gave (a new one: one of each a player)
-    if (r.kind === 'item' && r.ok && r.item) {
-      menus.prize = { ok: true, text: `ACHIEVEMENT: ${String(r.item.name).toUpperCase()}` }
-      audio.sfx('nitro', { volume: 0.8 })
-      screen.flash(0xffd66b, 0.5)
-      menus.redraw()
-    }
     if (r.kind === 'win' && (r.ok || r.reason)) {
       const got = r.ok && r.tokens > 0
       menus.prize = got ? { ok: true, text: `+${r.tokens} TOKENS FROM THE CITY!` } : { ok: false, text: String(r.reason).toUpperCase() }
@@ -1114,6 +1101,48 @@ export default async function start(p0) {
     }
   })
   menus.prizeRule = prizeRule        // (the game is not told how many prizes are taken: 'the first N' stays true)
+
+  // ---- invitations and duels (Project 0, 2026-10-11). Whoever came in by an invitation to a lobby lands in it.
+  // A duel for tokens between two players of the session is decided by the online race both fly: the one who
+  // finishes ahead wins (one who retires or leaves loses; both out: no winner). Both games report the same winner
+  // from the same finish times (each player's own, sent to the others to the millisecond), and the city pays only
+  // when the two reports agree.
+  let invitedLobby = p0.invitation?.data?.lobby ?? null
+  let duelReported = null
+  const duelName = pid => String(online.name(pid) || 'PLAYER').toUpperCase().slice(0, 16)
+  function duelSaid() {
+    const d = p0.duel
+    if (!d || d.state !== 'on') { menus.duelLine = ''; return }
+    const other = d.players.find(pid => pid !== p0.me.id)
+    menus.duelLine = d.players.includes(p0.me.id) ? `DUEL WITH ${duelName(other)}  /  ${d.stake} TOKENS EACH  /  FINISH AHEAD IN THE NEXT RACE` : ''
+    if (menus.screen === 'lobby') menus.redraw()
+  }
+  p0.on('duel', d => {
+    duelSaid()
+    if (d.state === 'on' && d.players.includes(p0.me.id) && state === 'race') hud.note(`DUEL: FINISH AHEAD OF ${duelName(d.players.find(pid => pid !== p0.me.id))}`, 4, 'gold')
+    if (d.state === 'over' && d.players.includes(p0.me.id)) {
+      const text = d.winner === p0.me.id ? 'YOU WON THE DUEL!' : d.winner ? 'THE DUEL IS LOST' : 'NO WINNER: THE STAKES WENT BACK'
+      menus.flash = text
+      if (state === 'race' || state === 'results') hud.note(text, 5, d.winner === p0.me.id ? 'gold' : 'pink')
+      menus.redraw()
+    }
+  })
+  function duelCheck() {
+    const d = p0.duel
+    if (!d || d.state !== 'on' || duelReported === d.id || !config?.online || !d.players.includes(p0.me.id)) return
+    const [a, b] = d.players.map(pid => race.racers.find(r => r.pid === pid))
+    if (!a || !b) return
+    const here = new Set(online.players)
+    const out = r => r.retired || (!r.finished && !here.has(r.pid))
+    if (!(a.finished || out(a)) || !(b.finished || out(b))) return
+    const ms = r => Math.round(r.finishTime * 1000)
+    let winner = 0
+    if (a.finished && b.finished) winner = ms(a) < ms(b) ? a.pid : ms(b) < ms(a) ? b.pid : 0
+    else if (a.finished) winner = a.pid
+    else if (b.finished) winner = b.pid
+    duelReported = d.id
+    p0.duelResult(winner)
+  }
 
   // ---- warm-up: every kind of material drawn once on its own, so no frame stalls on a shader
   p0.hud('ZER0-G\nWarming up the engines...')
@@ -1274,6 +1303,8 @@ export default async function start(p0) {
     if (!lite && slow > 4) goLite('slow frames')
     p0.me.position.copy(me ? cams.racerFrame(me).p : camera.position)
 
+    // a duel: its winner once both its players are done
+    if ((state === 'race' || state === 'results') && frames % 15 === 0) duelCheck()
     // the standings fill in while the others finish
     if (state === 'results' && frames % 30 === 0) { menus.data = results(); menus.dataKey = race.ranked.filter(r => r.finished || r.retired).length; menus.redraw() }
     if (state === 'race' && Math.floor(p0.time) !== lastHud && !audio.ready) { lastHud = Math.floor(p0.time); p0.hud(`${CONTROLS}\nClick or press any key for sound`) }

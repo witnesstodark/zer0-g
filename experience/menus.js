@@ -53,10 +53,13 @@ const LOBBY_ROW = { x: 240, y: 120, w: 800, h: 58, gap: 8, shown: 7 }
 const LIKE_BTN = { x: 1068, y: 414, w: 154, h: 40 }   // under the stand, on the right
 // the buttons for the mouse: back (bottom left) and on (bottom right)
 const BACK = { x: 40, y: 663, w: 150, h: 40 }
+// the lobby's INVITE and DUEL, at the top right by its title
+const INVITE_BTN = { x: 990, y: 30, w: 120, h: 40 }
+const DUEL_BTN = { x: 1120, y: 30, w: 120, h: 40 }
 const GO = { x: 1050, y: 663, w: 190, h: 40 }
 
 export class Menus {
-  constructor({ overlay, font, thin, logo, icons, portraits, showroom, audio, tracks, onStart, onNext, onLobby, onBack, entityHint = '', faces = [], own = null, ownEntity = null, gallery = null }) {
+  constructor({ overlay, font, thin, logo, icons, portraits, showroom, audio, tracks, onStart, onNext, onLobby, onBack, onInvite = null, entityHint = '', faces = [], own = null, ownEntity = null, gallery = null }) {
     this.own = own                  // your machine's pilot entry (or null)
     this.ownEntity = ownEntity      // and its entity as Project 0 has it (version, when updated)
     this.galleryApi = gallery       // { entries(), pilot(entry) }: the players' machines
@@ -75,6 +78,8 @@ export class Menus {
     this.cups = CUPS.filter(c => c.courses.every(k => k < tracks.length))
     this.onNext = onNext
     this.onLobby = onLobby
+    this.onInvite = onInvite    // (kind: 'team' | 'duel') => void: the lobby's INVITE and DUEL (Project 0's invitations)
+    this.duelLine = ''          // the duel this player is in, said in the lobby (set by the game)
     this.onStart = onStart
     this.onBack = onBack
     this.sel = { mode: 0, tile: 0, machine: 0, engine: 0.5, cls: 1, course: 0, row: 1 }
@@ -304,6 +309,11 @@ export class Menus {
     } else if (scr === 'lobby') {
       back('< LEAVE')
       if (o?.isOwner && o.lobby?.phase === 'open') go('START THE RACE', { x: 440, y: 600, w: 400, h: 58 }, 22)
+      // invite others into this lobby, or challenge one to a duel for tokens (the city's form opens)
+      if (o?.lobby && this.onInvite) {
+        B.push({ id: 'invite', ...INVITE_BTN, label: 'INVITE', size: 14, act: () => this.invite('team') })
+        B.push({ id: 'duel', ...DUEL_BTN, label: 'DUEL', size: 14, act: () => this.invite('duel') })
+      }
     } else if (scr === 'results' && this.data) {
       const d = this.data
       back(d.online ? '< LEAVE' : '< MENU')
@@ -488,8 +498,26 @@ export class Menus {
 
   setTable(table) { this.table = table; if (this.screen) { this.dataKey = Date.now(); this.redraw() } }
 
+  /** INVITE or DUEL in the lobby: the city's invitation form, with this lobby attached. */
+  invite(kind) {
+    if (!this.online?.lobby || !this.onInvite) return
+    this.audio.sfx('gtr_select')
+    this.onInvite(kind)
+  }
+
+  /** Straight into a lobby from an invitation (p0.invitation): ONLINE RACE, that lobby; its list when it has closed. */
+  joinLobby(id) {
+    const o = this.online
+    this.sel.mode = MODES.indexOf('online')
+    if (o?.join(this.sel, id)) { this.audio.sfx('gtr_start', { volume: 1 }); this.open('lobby'); return true }
+    this.flash = 'THAT LOBBY HAS CLOSED: JOIN ANOTHER OR CREATE ONE'
+    this.open('online')
+    return false
+  }
+
   move(code) {
     const s = this.sel
+    if (this.screen === 'lobby' && (code === 'KeyI' || code === 'KeyO')) { this.invite(code === 'KeyI' ? 'team' : 'duel'); return true }
     const up = code === 'ArrowUp' || code === 'KeyW', down = code === 'ArrowDown' || code === 'KeyS'
     const left = code === 'ArrowLeft' || code === 'KeyA', right = code === 'ArrowRight' || code === 'KeyD'
     const ok = code === 'Space' || code === 'ShiftLeft' || code === 'ShiftRight' || code === 'tap'
@@ -934,6 +962,7 @@ export class Menus {
       glass(c, 300, 100, 680, 548, { on: true, accent: C_PINK, k: 16 })
       if (!L) { f.draw(c, 'THE LOBBY CLOSED', 640, 200, 22, { color: '#ffffff', align: 'center', skew: 0.12, outline: false }); hint('BACKSPACE: BACK'); return }
       t.draw(c, `${v.members.length} PLAYER${v.members.length === 1 ? '' : 'S'} IN  /  AI RIVALS FILL THE GRID TO 30`, 640, 134, 11, { color: C_CYAN, align: 'center', skew: 0, spacing: 0.16, outline: false })
+      if (this.duelLine) t.draw(c, this.duelLine, 640, 156, 11, { color: C_GOLD, align: 'center', skew: 0, spacing: 0.16, outline: false })
       v.members.slice(0, 12).forEach((m, k) => {
         const y = 184 + k * 32, mine = m.pid === o.me, owner = m.pid === L.owner
         c.fillStyle = mine ? 'rgba(255,43,214,0.12)' : 'rgba(130,170,220,0.05)'; c.fillRect(360, y - 13, 560, 26)
@@ -951,7 +980,7 @@ export class Menus {
         if (waiting) t.draw(c, 'THE OTHERS ARE STILL RACING  /  THE LOBBY OPENS WHEN THEY FINISH', 640, 624, 12, { color: C_GOLD, align: 'center', skew: 0, spacing: 0.12, outline: false })
         else f.draw(c, 'GET READY!', 640, 624, 22, { color: C_GOLD, align: 'center', skew: 0.12, outline: false })
       }
-      hint(v.isOwner && L.phase === 'open' ? 'SPACE: START  ·  BACKSPACE: LEAVE THE LOBBY' : 'BACKSPACE: LEAVE THE LOBBY')
+      hint(v.isOwner && L.phase === 'open' ? 'SPACE: START  ·  I: INVITE  ·  O: DUEL  ·  BACKSPACE: LEAVE' : 'I: INVITE  ·  O: DUEL  ·  BACKSPACE: LEAVE THE LOBBY')
       return
     }
     if (screen === 'course') {
